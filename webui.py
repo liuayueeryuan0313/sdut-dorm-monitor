@@ -31,10 +31,11 @@ DEFAULTS = dict(sdut_user="", sdut_pwd="", qq_appid="", qq_secret="",
                 qq_group_openid="", poll_minutes=15.0, lookback_days=45,
                 push_enabled=False, enabled=False,
                 notification_provider="onebot", onebot_url="", onebot_token="", onebot_group_id="",
-                at_all_enabled=True, template_dorm="", template_fee="",
+                at_all_enabled=True, template_dorm="", template_fee="", template_elc="",
                 fee_enabled=False, fee_day=1, fee_time="09:00", fee_people=4, fee_amount="20.00",
                 elc_campus="西校区", elc_building="26号北楼", elc_floor="8", elc_room="814",
-                elc_type="照明插座", elc_enabled=False, elc_minutes=60.0)
+                elc_type="照明插座", elc_enabled=False, elc_minutes=60.0,
+                elc_warn_thresholds="50, 20, 10, 5")
 ELC_FIELDS = ("elc_campus", "elc_building", "elc_floor", "elc_room", "elc_type")
 ELC_CONFIG = (*ELC_FIELDS, "elc_enabled", "elc_minutes")
 SECRET_FIELDS = ("sdut_pwd", "qq_secret", "onebot_token")
@@ -42,6 +43,21 @@ SECRET_FIELDS = ("sdut_pwd", "qq_secret", "onebot_token")
 
 def timestamp():
     return datetime.now(CHINA).isoformat(timespec="seconds")
+
+
+def parse_thresholds(value):
+    if not value:
+        return []
+    result = []
+    for piece in re.split(r"[,，;\s]+", str(value).strip()):
+        if piece:
+            try:
+                val = float(piece)
+                if val > 0:
+                    result.append(val)
+            except ValueError:
+                pass
+    return sorted(set(result), reverse=True)
 
 
 def read_json(path, default):
@@ -89,6 +105,10 @@ class Monitor:
         self.elc_client = None
         self.elc_last_request = None
         self.elc_next_due = self.clock() + 5 if self.config["elc_enabled"] else None
+        self.elc_state_path = self.data_dir / ("webui_elc_state_" + self.account_key() + ".json")
+        elc_state = read_json(self.elc_state_path, {})
+        self.elc_alerted_thresholds = set(elc_state.get("alerted", [])) if isinstance(elc_state.get("alerted"), list) else set()
+        self.elc_last_kwh = elc_state.get("last_kwh")
         self.fee_journal_path = self.data_dir / "webui_fee_state.json"
         self.fee_journal = read_json(self.fee_journal_path, {})
         self.fee_error = ""
@@ -97,7 +117,7 @@ class Monitor:
         self.last_success = None
         self.last_error = ""
         self.fresh_count = 0
-        self.events = deque(maxlen=100)
+        self.events = deque(maxlen=200)
         self.rows = []
         cached = read_json(self.data_dir / "webui_records.json", {})
         if self.config["sdut_user"] and cached.get("account_key") == self.account_key():
@@ -113,14 +133,32 @@ class Monitor:
     def account_key(self):
         return hashlib.sha256(self.config["sdut_user"].encode()).hexdigest()[:24]
 
-    def event(self, message, level="info"):
+    def save_elc_state(self):
+        write_json(self.elc_state_path, {
+            "alerted": list(self.elc_alerted_thresholds),
+            "last_kwh": self.elc_last_kwh
+        })
+
+    def event(self, message, level="info", category="system"):
         with self.lock:
             for field in SECRET_FIELDS:
-                if self.config[field]:
+                if self.config.get(field):
                     message = message.replace(self.config[field], "[已隐藏]")
-            item = dict(time=timestamp(), level=level, message=message[:600])
+            if category == "system":
+                if any(w in message for w in ("登录", "认证", "会话", "CAS", "密码")):
+                    category = "auth"
+                elif any(w in message for w in ("查寝", "卫生", "记录")):
+                    category = "dorm"
+                elif any(w in message for w in ("电量", "电费", "度")):
+                    category = "electricity"
+                elif any(w in message for w in ("推送", "机器人", "OneBot", "QQ", "网费")):
+                    category = "bot"
+            item = dict(id=secrets.token_hex(4), time=timestamp(), category=category, level=level, message=message[:600])
             self.events.appendleft(item)
-            self.logger.info("%s %s", level, item["message"])
+            self.logger.info("[%s][%s] %s", category.upper(), level.upper(), item["message"])
+
+    def log_event(self, category, level, message):
+        self.event(message, level=level, category=category)
 
     def public_config(self):
         with self.lock:
@@ -140,12 +178,12 @@ class Monitor:
                 updated[key] = value
             for key in ("sdut_user", "sdut_pwd", "qq_appid", "qq_secret", "qq_group_openid",
                         "onebot_url", "onebot_token", "onebot_group_id", "notification_provider", "fee_time",
-                        "template_dorm", "template_fee", *ELC_FIELDS):
+                        "template_dorm", "template_fee", "template_elc", "elc_warn_thresholds", *ELC_FIELDS):
                 if key not in updated:
                     continue
                 if not isinstance(updated[key], str) or len(updated[key]) > 4096:
                     raise ValueError("文本字段类型错误或超长，最多 4096 字符")
-                if key not in SECRET_FIELDS and not key.startswith("template_"):
+                if key not in SECRET_FIELDS and not key.startswith("template_") and key != "elc_warn_thresholds":
                     updated[key] = updated[key].strip()
             if "at_all_enabled" in updated:
                 if not isinstance(updated["at_all_enabled"], bool):
@@ -194,6 +232,7 @@ class Monitor:
                 self.validate_ready({**updated, "push_enabled": False})
             elc_schedule_changed = any(updated[k] != self.config[k] for k in ELC_CONFIG)
             elc_changed = any(updated[k] != self.config[k] for k in ELC_FIELDS)
+            thresholds_changed = updated.get("elc_warn_thresholds") != self.config.get("elc_warn_thresholds")
             if elc_changed and self.elc_busy:
                 raise ValueError("电量查询中，请稍后修改宿舍")
             credentials_changed = any(updated[k] != self.config[k] for k in
@@ -216,12 +255,22 @@ class Monitor:
             if school_changed or elc_changed:
                 self.elc_result = None
                 self.elc_error = ""
+                self.elc_alerted_thresholds.clear()
+                self.elc_last_kwh = None
+                self.save_elc_state()
+            elif thresholds_changed:
+                self.elc_alerted_thresholds.clear()
+                self.save_elc_state()
             if account_changed:
                 self.rows = []
                 self.last_success = None
                 self.last_run = None
                 self.last_error = ""
                 self.fresh_count = 0
+                self.elc_state_path = self.data_dir / ("webui_elc_state_" + self.account_key() + ".json")
+                self.elc_alerted_thresholds.clear()
+                self.elc_last_kwh = None
+                self.save_elc_state()
             if self.config["enabled"]:
                 self.next_due = self.clock() + self.config["poll_minutes"] * 60
             self.condition.notify_all()
@@ -271,24 +320,167 @@ class Monitor:
             self.busy = True
         threading.Thread(target=self.poll, args=(True,), daemon=True).start()
 
+    def ensure_session(self, force=False):
+        with self.lock:
+            if not force and self.client is not None:
+                return self.client, True
+            now = self.clock()
+            if self.last_login is not None and now - self.last_login < 300:
+                raise RuntimeError("登录冷却中，请在上次登录尝试 5 分钟后再试")
+            self.last_login = now
+            user = self.config["sdut_user"]
+            pwd = self.config["sdut_pwd"]
+            self.log_event("auth", "info", "正在通过 CAS 统一身份认证登录学校系统 (账号: %s)" % user)
+            client = self.client_factory(user, pwd)
+            client.bootstrap()
+            self.client = client
+            try:
+                from sdut_electricity import ElectricityClient
+                self.elc_client = ElectricityClient(user, pwd, opener=getattr(client, "op", None))
+            except Exception:
+                pass
+            self.log_event("auth", "success", "学校 CAS 统一身份认证成功，已建立认证会话 (CASTGC)")
+            return self.client, False
+
+    def test_login(self, user=None, pwd=None):
+        with self.lock:
+            user = user or self.config["sdut_user"]
+            pwd = pwd or self.config["sdut_pwd"]
+        if not user or not pwd:
+            raise ValueError("请提供学号和登录密码")
+        self.log_event("auth", "info", "正在测试学校统一认证登录 (学号: %s)..." % user)
+        try:
+            client = self.client_factory(user, pwd)
+            roles = client.bootstrap()
+            with self.lock:
+                if user == self.config["sdut_user"]:
+                    self.client = client
+                    try:
+                        from sdut_electricity import ElectricityClient
+                        self.elc_client = ElectricityClient(user, pwd, opener=getattr(client, "op", None))
+                    except Exception:
+                        pass
+            role_desc = roles[0].get("ROLENAME", "学生") if roles and isinstance(roles, list) else "已认证"
+            self.log_event("auth", "success", "学校账号 (%s) 测试登录成功，身份: %s" % (user, role_desc))
+            return {"ok": True, "message": "账号 %s 登录成功！身份认证正常（角色：%s）。" % (user, role_desc)}
+        except Exception as error:
+            err_msg = str(error)
+            for field in SECRET_FIELDS:
+                if pwd:
+                    err_msg = err_msg.replace(pwd, "[已隐藏]")
+            self.log_event("auth", "error", "学校账号 (%s) 测试登录失败: %s" % (user, err_msg))
+            raise ValueError("登录失败: %s" % err_msg) from None
+
+    def format_electricity_message(self, elc_result, threshold):
+        cfg = self.config
+        custom_tpl = (cfg.get("template_elc") or "").strip()
+        kwh_str = str(elc_result.get("remaining_kwh") or "")
+        cny_str = str(elc_result.get("balance_cny") or "")
+        cny_text = ("账户余额：%s 元" % cny_str) if cny_str and cny_str != "None" else ""
+        campus = str(elc_result.get("campus") or cfg.get("elc_campus", ""))
+        building = str(elc_result.get("building") or cfg.get("elc_building", ""))
+        room = str(elc_result.get("room") or cfg.get("elc_room", ""))
+        elc_type = str(elc_result.get("electricity_type") or cfg.get("elc_type", ""))
+        location = str(elc_result.get("page_location") or ("%s %s %s" % (campus, building, room)))
+        checked_at = str(elc_result.get("checked_at") or timestamp())
+
+        at_prefix = "@全体成员\n" if cfg.get("at_all_enabled") and cfg.get("notification_provider") == "onebot" else ""
+
+        if custom_tpl:
+            rendered = custom_tpl \
+                .replace("{balance}", kwh_str) \
+                .replace("{threshold}", str(threshold)) \
+                .replace("{campus}", campus) \
+                .replace("{building}", building) \
+                .replace("{room}", room) \
+                .replace("{type}", elc_type) \
+                .replace("{location}", location) \
+                .replace("{balance_cny}", cny_str) \
+                .replace("{balance_cny_text}", cny_text) \
+                .replace("{checked_at}", checked_at)
+            return at_prefix + rendered
+        else:
+            cny_part = ("\n账户余额：%s 元" % cny_str) if cny_str and cny_str != "None" else ""
+            return ("%s【宿舍低电量预警】\n"
+                    "宿舍位置：%s\n"
+                    "用电类型：%s\n"
+                    "剩余电量：%s 度（已低于 %s 度预警线）%s\n\n"
+                    "请宿舍成员及时充值电费，以防断电影响正常用电！" %
+                    (at_prefix, location, elc_type, kwh_str, threshold, cny_part))
+
+    def check_electricity_alerts(self, elc_result, deliver=True):
+        if not elc_result or not elc_result.get("remaining_kwh"):
+            return
+        try:
+            kwh = float(elc_result["remaining_kwh"])
+        except (ValueError, TypeError):
+            return
+
+        if self.elc_last_kwh is not None and kwh > self.elc_last_kwh + 0.5:
+            self.elc_alerted_thresholds.clear()
+            self.log_event("electricity", "info",
+                           "检测到电费充值（电量由 %.2f 度增加至 %.2f 度），已重置多级预警状态" %
+                           (self.elc_last_kwh, kwh))
+
+        for t in list(self.elc_alerted_thresholds):
+            if kwh > t:
+                self.elc_alerted_thresholds.remove(t)
+
+        self.elc_last_kwh = kwh
+        self.save_elc_state()
+
+        thresholds = parse_thresholds(self.config.get("elc_warn_thresholds", "50, 20, 10, 5"))
+        newly_triggered = [t for t in thresholds if kwh <= t and t not in self.elc_alerted_thresholds]
+        if not newly_triggered:
+            return
+
+        for t in newly_triggered:
+            self.elc_alerted_thresholds.add(t)
+        self.save_elc_state()
+
+        active_threshold = min(newly_triggered)
+
+        if not deliver or not self.config.get("push_enabled") or self.config.get("notification_provider") == "none":
+            self.log_event("electricity", "warn",
+                           "电量预警触发：当前 %.2f 度低于预警线 %s 度（未启用群推送，仅本地记录）" %
+                           (kwh, active_threshold))
+            return
+
+        msg = self.format_electricity_message(elc_result, active_threshold)
+        try:
+            notifier = GroupNotifier(self.config)
+            notifier.send(msg)
+            at_text = " @全体成员" if self.config.get("at_all_enabled") and self.config.get("notification_provider") == "onebot" else ""
+            self.log_event("bot", "success",
+                           "已%s 发送电量低电预警通知：剩余 %.2f 度（低于阈值 %s 度）" %
+                           (at_text, kwh, active_threshold))
+        except Exception as error:
+            self.log_event("bot", "error", "电量预警群消息发送失败: %s" % error)
+
     def poll(self, preview=False):
         with self.lock:
             config = dict(self.config)
             self.last_run = timestamp()
         try:
-            if self.client is None:
-                now = self.clock()
-                if self.last_login is not None and now - self.last_login < 300:
-                    raise RuntimeError("登录冷却中，请在上次登录尝试 5 分钟后再试")
-                self.last_login = now
-                self.event("正在登录学校系统")
-                client = self.client_factory(config["sdut_user"], config["sdut_pwd"])
-                client.bootstrap()
-                self.client = client
+            # 1. 会话复用与 CAS 认证
+            client, reused = self.ensure_session(force=False)
+            if reused:
+                self.log_event("auth", "info", "复用现有学校认证会话 (CAS SSO 免登)")
+
+            # 2. 拉取查寝记录
+            self.log_event("dorm", "info", "正在拉取宿舍查寝记录...")
             today = datetime.now(CHINA).date()
-            rows = self.client.list_records(page_size=50, max_pages=50,
+            try:
+                rows = client.list_records(page_size=50, max_pages=50,
                                            start=(today - timedelta(days=config["lookback_days"])).isoformat(),
                                            end=today.isoformat())
+            except Exception as query_err:
+                self.log_event("auth", "warn", "查寝接口请求异常 (%s)，尝试重新登录认证..." % query_err)
+                client, _ = self.ensure_session(force=True)
+                rows = client.list_records(page_size=50, max_pages=50,
+                                           start=(today - timedelta(days=config["lookback_days"])).isoformat(),
+                                           end=today.isoformat())
+
             # Deduplicate repeated rows within one API response.
             rows = list({r["WID"]: r for r in rows if r.get("WID")}.values())
             rows.sort(key=lambda row: (str(row.get("JCRQ", "")), str(row["WID"])), reverse=True)
@@ -306,9 +498,8 @@ class Monitor:
                     state.update(seen=sorted(seen | {row["WID"] for row in rows}), initialized=True)
                     write_json(self.state_path(), state)
                     self.fresh_count = 0
-                    self.event("首次运行已建立 %d 条基线，不推送历史记录" % len(rows))
+                    self.log_event("dorm", "info", "首次运行已建立 %d 条基线，不推送历史记录" % len(rows))
                 elif deliver and fresh and config["push_enabled"] and self.config["push_enabled"]:
-                    # Holding the lock serializes stop/config operations with a send already begun.
                     notifier = GroupNotifier(config)
                     for offset in range(0, len(fresh), 5):
                         batch = fresh[offset:offset + 5]
@@ -317,14 +508,46 @@ class Monitor:
                         state.update(seen=sorted(seen), initialized=True, last_push=timestamp())
                         write_json(self.state_path(), state)
                     self.fresh_count = 0
-                    at_text = " @全体成员" if config.get("at_all_enabled") else ""
-                    self.event("已%s 推送 %d 条新记录至目标群" % (at_text, len(fresh)))
+                    at_text = " @全体成员" if config.get("at_all_enabled") and config.get("notification_provider") == "onebot" else ""
+                    self.log_event("bot", "success", "已%s 推送 %d 条新记录至目标群" % (at_text, len(fresh)))
                 self.last_success = checked
                 self.last_error = ""
-                self.event("%s完成：%d 条记录，%d 条未读" %
-                           ("手动采集（不推送）" if preview else "自动采集", len(rows), self.fresh_count))
+                self.log_event("dorm", "success", "%s完成：%d 条记录，%d 条未读" %
+                               ("手动采集（不推送）" if preview else "自动采集", len(rows), self.fresh_count))
+
+            # 3. 合并查询宿舍电量（共用同一个 CAS 会话）
+            if config.get("elc_enabled"):
+                self.log_event("electricity", "info", "合并采集宿舍电量 (复用 SSO 会话)...")
+                try:
+                    from sdut_electricity import ElectricityClient
+                    kwargs = {}
+                    if hasattr(self.client, "op") and self.client.op is not None:
+                        kwargs["opener"] = self.client.op
+                    if self.elc_client is None:
+                        self.elc_client = ElectricityClient(config["sdut_user"], config["sdut_pwd"], **kwargs)
+                    elif "opener" in kwargs and getattr(self.elc_client, "opener", None) != kwargs["opener"]:
+                        self.elc_client.opener = kwargs["opener"]
+
+                    elc_result = self.elc_client.query(*(config[key] for key in ELC_FIELDS)).to_dict()
+                    with self.lock:
+                        self.elc_result = elc_result
+                        self.elc_error = ""
+                    kwh = elc_result.get("remaining_kwh")
+                    cny = elc_result.get("balance_cny")
+                    cny_desc = ("，余额 %s 元" % cny) if cny is not None else ""
+                    self.log_event("electricity", "success", "宿舍电量查询成功：剩余 %s 度%s" % (kwh, cny_desc))
+                    self.check_electricity_alerts(elc_result, deliver=deliver)
+                except Exception as elc_err:
+                    elc_msg = str(elc_err)
+                    for key in SECRET_FIELDS:
+                        if config[key]:
+                            elc_msg = elc_msg.replace(config[key], "[已隐藏]")
+                    with self.lock:
+                        self.elc_error = elc_msg[:600]
+                    self.log_event("electricity", "error", "宿舍电量采集失败: %s" % elc_msg)
         except LoginBlocked as error:
             self.client = None
+            self.elc_client = None
             with self.condition:
                 self.config["enabled"] = False
                 write_json(self.data_dir / "webui_config.json", self.config)
@@ -333,6 +556,7 @@ class Monitor:
         except Exception as error:
             # Rebuild a failed business session next time, subject to the login cooldown.
             self.client = None
+            self.elc_client = None
             self.record_error(str(error))
         finally:
             with self.condition:
@@ -518,12 +742,22 @@ class Monitor:
         def task():
             try:
                 from sdut_electricity import ElectricityClient
+                kwargs = {}
+                if self.client is not None and hasattr(self.client, "op") and self.client.op is not None:
+                    kwargs["opener"] = self.client.op
                 if self.elc_client is None:
-                    self.elc_client = ElectricityClient(config["sdut_user"], config["sdut_pwd"])
+                    self.elc_client = ElectricityClient(config["sdut_user"], config["sdut_pwd"], **kwargs)
+                elif "opener" in kwargs and getattr(self.elc_client, "opener", None) != kwargs["opener"]:
+                    self.elc_client.opener = kwargs["opener"]
+
                 result = self.elc_client.query(*(config[key] for key in ELC_FIELDS)).to_dict()
                 with self.lock:
                     self.elc_result = result
-                self.event("宿舍电量查询成功：%s" % result.get("page_location", config["elc_room"]))
+                    self.elc_error = ""
+                reused_note = " (复用 SSO 会话)" if "opener" in kwargs else ""
+                self.log_event("electricity", "success", "宿舍电量查询成功%s：%s，剩余 %s 度" %
+                               (reused_note, result.get("page_location", config["elc_room"]), result.get("remaining_kwh", "—")))
+                self.check_electricity_alerts(result, deliver=False)
             except Exception as error:
                 message = str(error)
                 for key in SECRET_FIELDS:
@@ -534,7 +768,7 @@ class Monitor:
                     if isinstance(error, LoginBlocked):
                         self.config["elc_enabled"] = False
                         write_json(self.data_dir / "webui_config.json", self.config)
-                self.event("电量查询失败：" + message, "error")
+                self.log_event("electricity", "error", "电量查询失败：" + message)
             finally:
                 with self.condition:
                     self.elc_busy = False
@@ -547,11 +781,15 @@ class Monitor:
         with self.lock:
             return dict(config=self.public_config(), busy=self.busy, fee=self.fee_status(),
                         electricity=dict(busy=self.elc_busy, result=self.elc_result, error=self.elc_error,
-                                         next_due=self.elc_next_due),
+                                         next_due=self.elc_next_due,
+                                         alerted_thresholds=list(self.elc_alerted_thresholds),
+                                         last_kwh=self.elc_last_kwh),
                         capture_busy=self.capture_busy, next_due=self.next_due,
                         last_run=self.last_run, last_success=self.last_success,
                         last_error=self.last_error, fresh_count=self.fresh_count,
-                        record_count=len(self.rows), records=self.rows[:200], events=list(self.events))
+                        record_count=len(self.rows), records=self.rows[:200],
+                        events=list(self.events),
+                        logs=list(self.events))
 
     def start_worker(self):
         def worker():
@@ -750,6 +988,10 @@ def handler_for(app):
                     return
                 elif path == "/api/fee-retry":
                     app.monitor.retry_fee()
+                elif path == "/api/test-login":
+                    result = app.monitor.test_login(payload.get("sdut_user"), payload.get("sdut_pwd"))
+                    self.send(200, result)
+                    return
                 elif path == "/api/logout":
                     with app.lock:
                         for token, value in list(app.sessions.items()):

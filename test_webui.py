@@ -176,6 +176,71 @@ class MonitorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.monitor.save_config({"sdut_user": "new-account"})
 
+    def test_multi_threshold_electricity_alerts_and_recharge_reset(self):
+        self.monitor.save_config({
+            "elc_warn_thresholds": "50, 20, 10, 5",
+            "push_enabled": True,
+            "notification_provider": "onebot",
+            "onebot_url": "http://127.0.0.1:3000",
+            "onebot_group_id": "123456",
+            "at_all_enabled": False
+        })
+        with patch.object(webui, "GroupNotifier") as mock_notifier_cls:
+            mock_notifier = Mock()
+            mock_notifier_cls.return_value = mock_notifier
+
+            # 1. 60 kWh: above 50, no alert
+            self.monitor.check_electricity_alerts({"remaining_kwh": "60.00"}, deliver=True)
+            mock_notifier.send.assert_not_called()
+            self.assertEqual(len(self.monitor.elc_alerted_thresholds), 0)
+
+            # 2. 45 kWh: <= 50, triggers alert for 50
+            self.monitor.check_electricity_alerts({"remaining_kwh": "45.00"}, deliver=True)
+            self.assertEqual(mock_notifier.send.call_count, 1)
+            self.assertIn(50.0, self.monitor.elc_alerted_thresholds)
+
+            # 3. 42 kWh: still <= 50, but 50 already alerted, > 20, no new alert
+            self.monitor.check_electricity_alerts({"remaining_kwh": "42.00"}, deliver=True)
+            self.assertEqual(mock_notifier.send.call_count, 1)
+
+            # 4. 18 kWh: <= 20, triggers alert for 20
+            self.monitor.check_electricity_alerts({"remaining_kwh": "18.00"}, deliver=True)
+            self.assertEqual(mock_notifier.send.call_count, 2)
+            self.assertIn(20.0, self.monitor.elc_alerted_thresholds)
+
+            # 5. Recharge: 80 kWh (> 18 + 0.5), resets alerts
+            self.monitor.check_electricity_alerts({"remaining_kwh": "80.00"}, deliver=True)
+            self.assertEqual(len(self.monitor.elc_alerted_thresholds), 0)
+
+            # 6. Drops to 48 kWh: triggers alert for 50 again
+            self.monitor.check_electricity_alerts({"remaining_kwh": "48.00"}, deliver=True)
+            self.assertEqual(mock_notifier.send.call_count, 3)
+            self.assertIn(50.0, self.monitor.elc_alerted_thresholds)
+
+    def test_combined_polling_queries_dorm_and_electricity_with_shared_session(self):
+        self.monitor.save_config({
+            "elc_enabled": True,
+            "elc_campus": "西校区",
+            "elc_building": "26号北楼",
+            "elc_floor": "8",
+            "elc_room": "814",
+            "elc_type": "照明插座"
+        })
+        self.monitor.set_enabled(True)
+        fake_elc_client = Mock()
+        fake_elc_client.query.return_value.to_dict.return_value = {
+            "remaining_kwh": "35.50", "balance_cny": "10.00", "page_location": "西校区 26号北楼 814"
+        }
+        with patch("sdut_electricity.ElectricityClient", return_value=fake_elc_client) as elc_cls:
+            self.monitor.poll()
+            self.client.list_records.assert_called_once()
+            elc_cls.assert_called_once()
+            fake_elc_client.query.assert_called_once_with("西校区", "26号北楼", "8", "814", "照明插座")
+            self.assertEqual(self.monitor.elc_result["remaining_kwh"], "35.50")
+            categories = {e.get("category") for e in self.monitor.events}
+            self.assertIn("dorm", categories)
+            self.assertIn("electricity", categories)
+
 
 class HttpTests(unittest.TestCase):
     def setUp(self):
@@ -264,6 +329,14 @@ class HttpTests(unittest.TestCase):
         self.assertIn("Content-Security-Policy", headers)
         self.assertIn("监测控制台".encode(), raw)
         self.assertEqual(self.request("GET", "/data/webui_config.json")[0], 404)
+
+    def test_test_login_endpoint(self):
+        self.login()
+        with patch.object(self.monitor, "test_login", return_value={"ok": True, "message": "登录成功"}) as test_mock:
+            status, _, raw = self.request("POST", "/api/test-login", {"sdut_user": "u", "sdut_pwd": "p"})
+            self.assertEqual(status, 200)
+            self.assertIn("登录成功".encode(), raw)
+            test_mock.assert_called_once_with("u", "p")
 
 
 class CaptchaTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css?v=20261017c"><script src="/app.js?v=20261017c" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css?v=20261018a"><script src="/app.js?v=20261018a" defer></script></head>
 <body>
 <div id="auth" class="auth-wrap">
   <div class="auth-card"><div class="brand-mark">寝</div><h1 id="auth-title">管理控制台</h1><p id="auth-copy" class="muted">正在连接服务…</p>
@@ -11,11 +11,11 @@
   <div class="top-nav-container">
     <nav class="top-nav">
       <div class="nav-links">
-        <a class="nav-item selected" href="#overview"><span>▦</span>监测概览</a>
-        <a class="nav-item" href="#configuration"><span>⚙</span>连接与计划</a>
-        <a class="nav-item" href="#records"><span>▤</span>查寝记录</a>
-        <a class="nav-item" href="#electricity"><span>ϟ</span>宿舍电量</a>
-        <a class="nav-item" href="#activity"><span>≋</span>运行日志</a>
+        <a class="nav-item selected" href="#overview" data-target="overview"><span>▦</span>监测概览</a>
+        <a class="nav-item" href="#configuration" data-target="configuration"><span>⚙</span>连接与计划</a>
+        <a class="nav-item" href="#records" data-target="records"><span>▤</span>查寝记录</a>
+        <a class="nav-item" href="#electricity" data-target="electricity"><span>ϟ</span>宿舍电量</a>
+        <a class="nav-item" href="#activity" data-target="activity"><span>≋</span>运行日志</a>
       </div>
       <div class="nav-meta">
         <span class="meta-status"><span class="online-dot"></span>本地空间</span>
@@ -24,20 +24,74 @@
     </nav>
   </div>
   <main>
-    <header id="overview">
-      <div class="header-right">
-        <span id="connection" class="connection">● 服务已连接</span>
-        <span id="run-badge" class="pill neutral">监测已停止</span>
-      </div>
-    </header>
-    <section class="stats" aria-label="监测状态">
-      <article class="stat"><span class="stat-label">当前记录 <span>▤</span></span><strong id="record-count">0<small> 条</small></strong></article>
-      <article class="stat"><span class="stat-label">刷新间隔 <span>◷</span></span><strong id="interval-value">15<small> 分钟</small></strong></article>
-      <article class="stat"><span class="stat-label">最近采集 <span>↻</span></span><strong id="last-success" class="time-value">尚未采集</strong><p id="last-date" class="stat-sub"></p></article>
-      <article class="stat mint"><span class="stat-label">下一次采集 <span>↗</span></span><strong id="countdown" class="time-value">等待启动</strong><p id="next-copy" class="stat-sub"></p></article>
-    </section>
     <div id="last-error" class="error-banner" role="alert" hidden></div>
-    <section class="section" id="configuration">
+
+    <!-- ================= VIEW 1: 监测概览 ================= -->
+    <section class="view-panel active" id="view-overview">
+      <header id="overview">
+        <div class="header-right">
+          <span id="connection" class="connection">● 服务已连接</span>
+          <span id="run-badge" class="pill neutral">监测已停止</span>
+          <div class="actions" style="margin-left: 12px; gap: 8px;">
+            <button id="overview-toggle" type="button" class="primary" style="padding: 4px 12px; font-size: 11px;">▶ 启动监测</button>
+            <button id="overview-preview" type="button" class="secondary" style="padding: 4px 10px; font-size: 11px;">↻ 手动采集</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="stats" aria-label="监测状态">
+        <article class="stat"><span class="stat-label">当前查寝记录 <span>▤</span></span><strong id="record-count">0<small> 条</small></strong></article>
+        <article class="stat"><span class="stat-label">宿舍电量剩余 <span>ϟ</span></span><strong id="overview-elc-balance">—<small> 度</small></strong><p id="overview-elc-sub" class="stat-sub">尚未查询</p></article>
+        <article class="stat"><span class="stat-label">刷新间隔 <span>◷</span></span><strong id="interval-value">15<small> 分钟</small></strong><p id="last-date" class="stat-sub"></p></article>
+        <article class="stat mint"><span class="stat-label">下一次采集 <span>↗</span></span><strong id="countdown" class="time-value">等待启动</strong><p id="next-copy" class="stat-sub"></p></article>
+      </div>
+
+      <div class="overview-grid">
+        <article class="summary-card">
+          <div class="summary-card-header">
+            <h3><span>▤</span> 最新查寝快报</h3>
+            <button type="button" class="summary-action-btn switch-view-btn" data-target="records">查看全部记录 ↗</button>
+          </div>
+          <div id="overview-records-preview" style="min-height: 110px;">
+            <p class="muted" style="font-size: 12px; padding: 12px 0;">暂无查寝记录，请先在「连接与计划」配置学校账号并执行采集。</p>
+          </div>
+        </article>
+
+        <article class="summary-card">
+          <div class="summary-card-header">
+            <h3><span>ϟ</span> 电量与网费简况</h3>
+            <button type="button" class="summary-action-btn switch-view-btn" data-target="electricity">管理电量预警 ↗</button>
+          </div>
+          <div style="font-size: 12px; display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span class="muted">当前用电位置</span>
+              <strong id="overview-elc-loc">—</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+              <span class="muted">多级预警状态</span>
+              <span id="overview-elc-warns" style="color: var(--amber); font-weight: 500;">预警线: 50, 20, 10, 5 度</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding-bottom: 2px;">
+              <span class="muted">本月网费提醒</span>
+              <span id="overview-fee-status">提醒已关闭</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <article class="summary-card" style="margin-top: 14px;">
+        <div class="summary-card-header">
+          <h3><span>≋</span> 最近系统动态</h3>
+          <button type="button" class="summary-action-btn switch-view-btn" data-target="activity">查看完整运行日志 ↗</button>
+        </div>
+        <div id="overview-events-preview" style="min-height: 80px; font-family: ui-monospace, monospace; font-size: 11.5px; display: flex; flex-direction: column; gap: 6px;">
+          <p class="muted">服务已就绪，正在等待任务调度...</p>
+        </div>
+      </article>
+    </section>
+
+    <!-- ================= VIEW 2: 连接与计划 ================= -->
+    <section class="view-panel" id="view-configuration" hidden>
       <div class="section-heading"><div><h2>连接与计划</h2></div><span class="tiny-label">01 / CONFIGURATION</span></div>
       <form id="config-form">
         <div class="config-grid">
@@ -46,6 +100,10 @@
             <label for="sdut-user">学号</label><input id="sdut-user" name="sdut_user" autocomplete="username" placeholder="输入学号">
             <label for="sdut-pwd">登录密码</label><input id="sdut-pwd" name="sdut_pwd" type="password" autocomplete="new-password" placeholder="输入密码">
             <p id="school-secret-note" hidden></p>
+            <div class="test-login-wrap">
+              <button id="school-test-login" type="button" class="secondary" style="flex: 1; border-color: rgba(56, 189, 248, 0.4); color: var(--cyan);">测试账号登录 ↗</button>
+            </div>
+            <div id="school-test-feedback" class="school-test-feedback"></div>
           </article>
           <article class="panel">
             <div class="panel-title"><span class="icon-box blue">↗</span><div><h3>群通知</h3></div><label class="switch"><input id="push-enabled" type="checkbox" aria-label="启用 QQ 推送"><span></span></label></div>
@@ -88,23 +146,25 @@
               <summary style="font-size:12px;color:var(--accent-cyan);cursor:pointer;user-select:none;font-weight:500;">✎ 自定义通知消息内容（模板）</summary>
               <div style="margin-top:8px;">
                 <label for="template-dorm" style="font-size:11px;color:var(--text-secondary);">查寝通知模板 <span style="color:var(--text-muted);font-size:10px;">(变量: {date} {building} {room} {level} {score} {type} {week} {violation})</span></label>
-                <textarea id="template-dorm" rows="3" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认查寝模板"></textarea>
+                <textarea id="template-dorm" rows="2" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认查寝模板"></textarea>
                 <label for="template-fee" style="font-size:11px;color:var(--text-secondary);margin-top:6px;">网费提醒模板 <span style="color:var(--text-muted);font-size:10px;">(变量: {month} {people} {per_person} {total})</span></label>
-                <textarea id="template-fee" rows="3" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认网费提醒模板"></textarea>
+                <textarea id="template-fee" rows="2" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认网费提醒模板"></textarea>
+                <label for="template-elc" style="font-size:11px;color:var(--text-secondary);margin-top:6px;">电量低电预警模板 <span style="color:var(--text-muted);font-size:10px;">(变量: {balance} {threshold} {campus} {building} {room} {type} {balance_cny})</span></label>
+                <textarea id="template-elc" rows="2" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认电量预警模板"></textarea>
               </div>
             </details>
           </article>
         </div>
         <article class="panel schedule">
-          <div class="schedule-intro"><span class="icon-box">◷</span><div><h3>刷新计划</h3></div></div>
+          <div class="schedule-intro"><span class="icon-box">◷</span><div><h3>统一采集计划</h3></div></div>
           <div class="schedule-body">
             <div>
-              <label for="poll-minutes">采集间隔</label>
+              <label for="poll-minutes">采集间隔（查寝与电量合并同时采集）</label>
               <div class="interval-input"><input id="poll-minutes" name="poll_minutes" type="number" min="1" max="10080" step="any" required value="15"><span>分钟</span></div>
               <div class="presets" aria-label="常用刷新间隔"><button type="button" data-minutes="1">1 分钟</button><button type="button" data-minutes="5">5 分钟</button><button type="button" data-minutes="15" class="active">15 分钟</button><button type="button" data-minutes="30">30 分钟</button><button type="button" data-minutes="60">1 小时</button></div>
             </div>
             <div class="lookback">
-              <label for="lookback-days">回溯范围</label>
+              <label for="lookback-days">查寝回溯范围</label>
               <div class="interval-input"><input id="lookback-days" type="number" min="1" max="3650" step="1" value="45" required><span>天</span></div>
             </div>
           </div>
@@ -131,17 +191,28 @@
         </div>
       </form>
     </section>
-    <section class="section" id="records">
-      <div class="section-heading"><div><h2>最近查寝记录 <span id="rows-label" class="count-chip">0</span></h2><p id="records-copy" hidden></p></div><span class="tiny-label">02 / RECORDS</span></div>
+
+    <!-- ================= VIEW 3: 查寝记录 ================= -->
+    <section class="view-panel" id="view-records" hidden>
+      <div class="section-heading" style="display:flex; justify-content:space-between; align-items:center;">
+        <div><h2>查寝记录 <span id="rows-label" class="count-chip">0</span></h2><p id="records-copy" hidden></p></div>
+        <button id="records-refresh-btn" type="button" class="secondary" style="font-size:11.5px; padding: 4px 12px;">↻ 立即采集新数据</button>
+      </div>
       <div class="panel table-panel">
-        <div class="table-scroll"><table><thead><tr><th>检查日期</th><th>宿舍</th><th>检查类型</th><th>分数</th><th>等级</th><th>备注</th></tr></thead><tbody id="record-body"></tbody></table></div>
-        <div id="empty-records" class="empty"><span>▤</span><h3>暂无采集记录</h3></div>
+        <div class="table-scroll"><table><thead><tr><th>检查日期</th><th>宿舍</th><th>检查类型</th><th>分数</th><th>等级</th><th>备注 / 违规信息</th></tr></thead><tbody id="record-body"></tbody></table></div>
+        <div id="empty-records" class="empty"><span>▤</span><h3>暂无查寝记录</h3><p class="muted">请在「连接与计划」配置学校账号并保存后点击采集。</p></div>
       </div>
     </section>
-    <section class="section" id="electricity">
-      <div class="section-heading"><div><h2>宿舍电量</h2></div><span class="tiny-label">03 / ELECTRICITY</span></div>
+
+    <!-- ================= VIEW 4: 宿舍电量 ================= -->
+    <section class="view-panel" id="view-electricity" hidden>
+      <div class="section-heading"><div><h2>宿舍电量监控与多级预警</h2></div><span class="tiny-label">03 / ELECTRICITY</span></div>
       <form id="electricity-form" class="panel">
-        <div class="panel-title"><span class="icon-box">ϟ</span><div><h3>宿舍电量</h3></div><span class="mini-status ready">实时监测</span></div>
+        <div class="panel-title"><span class="icon-box">ϟ</span><div><h3>宿舍电量状态</h3></div><span class="mini-status ready">实时监测</span></div>
+        <div class="fee-summary" style="margin-bottom: 12px; background: rgba(0,0,0,0.25); padding: 14px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border-glass);">
+          <div><span class="muted">当前剩余电量</span><strong><span id="elc-balance" style="font-size: 28px; color: var(--cyan);">—</span><small> 度</small></strong></div>
+          <div><p id="elc-detail" class="muted" style="font-size: 13px;">尚未查询</p><p id="elc-next" class="stat-sub" style="margin-top: 4px;"></p></div>
+        </div>
         <div class="fee-settings">
           <div><label for="elc-campus">校区</label><select id="elc-campus"><option>西校区</option><option>东校区</option></select></div>
           <div><label for="elc-building">楼栋</label><input id="elc-building" value="26号北楼" required maxlength="100"></div>
@@ -150,23 +221,33 @@
         </div>
         <div class="fee-settings">
           <div><label for="elc-type">用电类型</label><select id="elc-type"><option>照明插座</option><option>空调用电</option></select></div>
-          <div><label for="elc-minutes">自动查询间隔 · 分钟</label><input id="elc-minutes" type="number" min="5" max="10080" step="any" value="60" required></div>
-          <div><label for="elc-enabled">自动查询</label><label class="switch" style="margin:12px 0"><input id="elc-enabled" type="checkbox" aria-label="自动查询电量"><span></span></label></div>
+          <div style="grid-column: span 2;"><label for="elc-warn-thresholds">多级报警阈值（度，以逗号分隔，如: 50, 20, 10, 5）</label><input id="elc-warn-thresholds" name="elc_warn_thresholds" value="50, 20, 10, 5" required placeholder="50, 20, 10, 5"></div>
+          <div><label for="elc-enabled">开启电量采集</label><label class="switch" style="margin:12px 0"><input id="elc-enabled" type="checkbox" aria-label="自动查询电量"><span></span></label></div>
         </div>
-        <div class="fee-summary">
-          <div><span class="muted">剩余电量</span><strong><span id="elc-balance">—</span><small> 度</small></strong></div>
-          <p id="elc-detail" class="muted">尚未查询</p>
-        </div>
-        <p id="elc-next" class="stat-sub"></p>
+        <p style="font-size: 11.5px; color: var(--text-dim); margin: 6px 0 12px 0;">ℹ 说明：查寝与电量查询已合并为一个计划，共用 CAS 统一认证会话。电量低于设定阈值时分别在群内提醒一次；检测到充值后自动重置状态。</p>
         <p id="elc-error" class="error-text" role="alert" hidden></p>
-        <div class="actions"><button type="button" id="elc-save" class="secondary">保存电量计划</button><button id="elc-query" type="submit" class="primary">保存并查询电量</button></div>
+        <div class="actions" style="margin-top: 8px;"><button type="button" id="elc-save" class="secondary">保存电量设置</button><button id="elc-query" type="submit" class="primary">保存并立即查询</button></div>
       </form>
     </section>
-    <section class="section" id="activity">
-      <div class="section-heading"><div><h2>运行动态</h2></div><span class="tiny-label">04 / ACTIVITY</span></div>
-      <div class="panel log-panel" id="events"><p class="muted">等待配置</p></div>
+
+    <!-- ================= VIEW 5: 运行日志 ================= -->
+    <section class="view-panel" id="view-activity" hidden>
+      <div class="section-heading" style="display:flex; justify-content:space-between; align-items:center;">
+        <div><h2>系统运行日志</h2></div>
+        <button id="logs-refresh-btn" type="button" class="secondary" style="font-size:11.5px; padding: 4px 12px;">↻ 刷新日志</button>
+      </div>
+      <div class="log-filters" id="log-filters">
+        <button type="button" class="log-filter-btn active" data-cat="all">全部动态</button>
+        <button type="button" class="log-filter-btn" data-cat="auth">🔐 认证与登录</button>
+        <button type="button" class="log-filter-btn" data-cat="dorm">📋 查寝数据</button>
+        <button type="button" class="log-filter-btn" data-cat="electricity">⚡ 宿舍电量</button>
+        <button type="button" class="log-filter-btn" data-cat="bot">🤖 机器人推送</button>
+        <button type="button" class="log-filter-btn" data-cat="error">⚠️ 异常报错</button>
+      </div>
+      <div class="panel log-panel-modern" id="events"><p class="muted">等待配置</p></div>
     </section>
-    <footer><span>SDUT MONITOR</span><span class="muted">Asia/Shanghai</span></footer>
+
+    <footer><span>SDUT DORM MONITOR</span><span class="muted">Asia/Shanghai · 本地单机部署</span></footer>
   </main>
 </div><div id="toast" role="status" hidden></div>
 </body></html>
