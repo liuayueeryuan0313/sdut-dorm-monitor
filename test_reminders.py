@@ -173,12 +173,35 @@ class OneBotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             GroupNotifier({**self.config, "notification_provider": "qq_official"})
 
-    def test_legacy_official_sender_cannot_silently_send_without_at_all(self):
+    def test_official_sender_posts_message_to_openapi(self):
         from sync_qqbot import QQBotClient
-        client = QQBotClient("fake", "secret")
-        with patch.object(client, "token") as token, self.assertRaises(RuntimeError):
-            client.send_group("fake-group", "notice")
-        token.assert_not_called()
+        client = QQBotClient("fake-app", "fake-secret")
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value.read.return_value = json.dumps({"id": "msg-123"}).encode()
+        with patch.object(client, "token", return_value="test-token"), \
+             patch("urllib.request.urlopen", return_value=mock_resp) as mock_open:
+            result = client.send_group("test-group", "hello official")
+        self.assertEqual(result.get("message_id"), "msg-123")
+        req = mock_open.call_args.args[0]
+        self.assertIn("/v2/groups/test-group/messages", req.full_url)
+        self.assertEqual(req.get_header("Authorization"), "QQBot test-token")
+        body = json.loads(req.data.decode("utf-8"))
+        self.assertEqual(body["content"], "hello official")
+        self.assertEqual(body["msg_type"], 0)
+
+    def test_official_qq_group_notifier_sends_without_at_all(self):
+        official_config = {
+            **self.config,
+            "notification_provider": "qq_official",
+            "qq_appid": "123",
+            "qq_secret": "sec",
+            "qq_group_openid": "grp-openid"
+        }
+        notifier = GroupNotifier(official_config)
+        with patch("sync_qqbot.QQBotClient.send_group", return_value={"message_id": "qq-456"}) as send_mock:
+            res = notifier.send("dorm alert")
+        send_mock.assert_called_once_with("grp-openid", "dorm alert")
+        self.assertEqual(res.get("message_id"), "qq-456")
 
     def test_invalid_url_and_group_are_rejected(self):
         for fields in ({"onebot_url": "file:///test"}, {"onebot_url": "https://user:pwd@example.com"},

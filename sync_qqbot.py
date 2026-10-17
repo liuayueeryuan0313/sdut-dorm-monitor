@@ -117,8 +117,34 @@ class QQBotClient:
         return self._token
 
     def send_group(self, group_openid, content):
-        """Legacy official-group sending is disabled: it cannot meet mandatory @all."""
-        raise RuntimeError("官方 QQ 群聊接口不支持 @全体成员，请使用 WebUI 配置免费 OneBot 通道发送")
+        """Send message via official QQ Bot OpenAPI."""
+        token = self.token()
+        url = "%s/v2/groups/%s/messages" % (self.API_BASE, group_openid)
+        payload = json.dumps({"content": content, "msg_type": 0}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "QQBot %s" % token,
+            }
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            if isinstance(data, dict) and data.get("id"):
+                return {"status": "ok", "message_id": data.get("id"), "raw": data}
+            return data if isinstance(data, dict) else {"status": "ok", "raw": data}
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="ignore")
+            err_msg = ""
+            try:
+                err_json = json.loads(err_body)
+                err_msg = err_json.get("message") or err_json.get("msg") or ""
+            except Exception:
+                pass
+            raise RuntimeError("QQ 官方机器人发送失败 (HTTP %s)%s" % (e.code, ": " + err_msg if err_msg else ""))
+        except Exception as e:
+            raise RuntimeError("QQ 官方机器人发送异常: %s" % e)
 
 
 # ------------------------- 抓取 -------------------------

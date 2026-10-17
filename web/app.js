@@ -38,8 +38,16 @@ function fillConfig(c) {
   dirty = false; updatePresets(); updateFeePreview(); updateProvider();
 }
 function updateProvider() {
-  const onebot = $('notification-provider').value === 'onebot';
-  $('onebot-fields').hidden = !onebot; $('official-fields').hidden = onebot;
+  const p = $('notification-provider').value;
+  $('onebot-fields').hidden = p !== 'onebot';
+  $('official-fields').hidden = p !== 'qq_official';
+  $('none-fields').hidden = p !== 'none';
+  $('channel-action-row').hidden = p === 'none';
+  const checkBtn = $('channel-check') || $('onebot-check');
+  if (checkBtn) {
+    if (p === 'qq_official') checkBtn.textContent = '验证官方凭据';
+    else if (p === 'onebot') checkBtn.textContent = '检查 OneBot 连接';
+  }
 }
 function updateFeePreview() {
   try {
@@ -53,7 +61,7 @@ function updateFeePreview() {
     $('fee-total').textContent = total;
     const monthKey = snapshot?.fee?.month || new Date().toLocaleDateString('sv-SE', {timeZone:'Asia/Shanghai'}).slice(0, 7);
     const [year, month] = monthKey.split('-'); const title = year + '年' + Number(month) + '月';
-    const atPrefix = $('at-all-enabled').checked ? '@全体成员\n' : '';
+    const atPrefix = $('at-all-enabled').checked && $('notification-provider').value === 'onebot' ? '@全体成员\n' : '';
     const customTpl = ($('template-fee').value || '').trim();
     if (customTpl) {
       const rendered = customTpl
@@ -182,18 +190,26 @@ $('config-form').addEventListener('submit', async event => {
 $('preview').addEventListener('click', () => dirty ? toast('请先保存配置', true) : action('/api/preview', '已开始手动采集，不发送消息'));
 $('toggle').addEventListener('click', () => dirty && !snapshot.config.enabled ? toast('请先保存配置', true) : action(snapshot.config.enabled ? '/api/stop' : '/api/start', snapshot.config.enabled ? '监测已停止' : '监测已启动'));
 $('capture').addEventListener('click', () => dirty ? toast('请先保存机器人配置', true) : action('/api/capture-group', '正在连接，请在目标群 @ 机器人'));
-$('onebot-check').addEventListener('click', async () => {
-  if (dirty) { toast('请先保存群通知配置', true); return; }
-  $('onebot-check').disabled = true;
-  try {
-    await api('/api/onebot-check', {});
-    const atAll = $('at-all-enabled').checked;
-    toast(atAll ? 'OneBot 连接及 @全体权限检查通过，未发送消息' : 'OneBot 基础连接检查通过，未发送消息');
-    await refresh();
-  }
-  catch (error) { toast(error.message, true); }
-  finally { $('onebot-check').disabled = false; }
-});
+const checkBtn = $('channel-check') || $('onebot-check');
+if (checkBtn) {
+  checkBtn.addEventListener('click', async () => {
+    if (dirty) { toast('请先保存群通知配置', true); return; }
+    checkBtn.disabled = true;
+    try {
+      const provider = $('notification-provider').value;
+      await api('/api/bot-check', {});
+      if (provider === 'qq_official') {
+        toast('QQ 官方机器人凭据验证通过，Token 获取成功');
+      } else {
+        const atAll = $('at-all-enabled').checked;
+        toast(atAll ? 'OneBot 连接及 @全体权限检查通过，未发送消息' : 'OneBot 基础连接检查通过，未发送消息');
+      }
+      await refresh();
+    }
+    catch (error) { toast(error.message, true); }
+    finally { checkBtn.disabled = false; }
+  });
+}
 $('bot-test-send').addEventListener('click', async () => {
   if (dirty) { toast('请先保存群通知配置', true); return; }
   $('bot-test-send').disabled = true;

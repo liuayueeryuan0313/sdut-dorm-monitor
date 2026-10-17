@@ -9,15 +9,21 @@ def validate_notification(config):
     provider = config.get("notification_provider", "onebot")
     if provider == "none":
         return
-    if provider != "onebot":
-        raise ValueError("不支持的通知通道：%s（支持 OneBot 或关闭外部推送）" % provider)
-    url = urlparse(config.get("onebot_url", ""))
-    if (url.scheme not in ("http", "https") or not url.hostname or url.username or url.password
-            or url.query or url.fragment):
-        raise ValueError("请填写有效的 OneBot HTTP 地址（不含账号、查询参数或片段）")
-    group = str(config.get("onebot_group_id", "")).strip()
-    if not group.isascii() or not group.isdigit() or not 1 <= int(group) < 2**63:
-        raise ValueError("OneBot 目标群须填写普通 QQ 群号")
+    if provider == "onebot":
+        url = urlparse(config.get("onebot_url", ""))
+        if (url.scheme not in ("http", "https") or not url.hostname or url.username or url.password
+                or url.query or url.fragment):
+            raise ValueError("请填写有效的 OneBot HTTP 地址（不含账号、查询参数或片段）")
+        group = str(config.get("onebot_group_id", "")).strip()
+        if not group.isascii() or not group.isdigit() or not 1 <= int(group) < 2**63:
+            raise ValueError("OneBot 目标群须填写普通 QQ 群号")
+    elif provider == "qq_official":
+        if not config.get("qq_appid") or not config.get("qq_secret"):
+            raise ValueError("请填写 QQ 官方机器人的 AppID 和 AppSecret")
+        if not config.get("qq_group_openid"):
+            raise ValueError("请填写 QQ 官方机器人的目标群 group_openid（可通过『获取群标识』获取）")
+    else:
+        raise ValueError("不支持的通知通道：%s（可选 OneBot、QQ 官方或关闭外部推送）" % provider)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -64,6 +70,11 @@ class GroupNotifier:
     def check_connection(self):
         if self.provider == "none":
             return {"status": "ok", "provider": "none"}
+        if self.provider == "qq_official":
+            from sync_qqbot import QQBotClient
+            client = QQBotClient(self.config["qq_appid"], self.config["qq_secret"])
+            token = client.token()
+            return {"status": "ok", "provider": "qq_official", "token_ready": bool(token)}
         if self.at_all_enabled:
             return self.check_at_all()
         # Non-at-all basic connection check
@@ -77,6 +88,8 @@ class GroupNotifier:
         return {"status": "ok", "at_all": False, "data": res}
 
     def check_at_all(self):
+        if self.provider == "qq_official":
+            raise RuntimeError("QQ 官方机器人接口暂不支持 @全体成员，请取消勾选或改用 OneBot")
         result = self.call("get_group_at_all_remain", {"group_id": self.group})
         if not isinstance(result, dict) or result.get("can_at_all") is not True:
             raise RuntimeError("机器人当前无法 @全体成员，请检查群管理员权限与 @全体额度（或在群通知设置中取消勾选『@全体成员』）")
@@ -88,6 +101,11 @@ class GroupNotifier:
     def send(self, content):
         if self.provider == "none":
             return {"status": "ok", "message_id": 0}
+
+        if self.provider == "qq_official":
+            from sync_qqbot import QQBotClient
+            client = QQBotClient(self.config["qq_appid"], self.config["qq_secret"])
+            return client.send_group(self.config["qq_group_openid"], content)
 
         message_segments = []
         if self.at_all_enabled:

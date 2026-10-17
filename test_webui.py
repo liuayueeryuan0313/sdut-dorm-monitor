@@ -247,6 +247,17 @@ class HttpTests(unittest.TestCase):
         self.login()
         self.assertEqual(self.request("POST", "/api/login", {"password": "incorrect-password"})[0], 400)
 
+    def test_bot_check_and_test_send_endpoints(self):
+        self.login()
+        with patch.object(self.monitor, "check_onebot", return_value={"status": "ok"}) as check_mock:
+            status, _, raw = self.request("POST", "/api/bot-check", {})
+            self.assertEqual(status, 200)
+            check_mock.assert_called_once()
+        with patch.object(self.monitor, "test_send_message", return_value={"status": "ok", "message_id": 123}) as send_mock:
+            status, _, raw = self.request("POST", "/api/bot-test-send", {"message": "test"})
+            self.assertEqual(status, 200)
+            send_mock.assert_called_once_with("test")
+
     def test_static_assets_have_csp_and_no_data_paths_exposed(self):
         status, headers, raw = self.request("GET", "/")
         self.assertEqual(status, 200)

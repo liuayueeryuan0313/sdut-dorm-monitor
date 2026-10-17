@@ -350,8 +350,9 @@ class Monitor:
             self.event(self.last_error, "error")
 
     def fee_key(self, now):
-        # Group numbers identify the same destination even if its URL/token changes.
-        return now.strftime("%Y-%m") + ":" + self.config["onebot_group_id"]
+        provider = self.config.get("notification_provider", "onebot")
+        target = self.config.get("qq_group_openid") if provider == "qq_official" else self.config.get("onebot_group_id", "")
+        return now.strftime("%Y-%m") + ":" + str(target)
 
     def fee_schedule(self):
         """Return current-month eligible send time; completed/uncertain attempts are not retried."""
@@ -373,10 +374,11 @@ class Monitor:
                 next_at = datetime.fromtimestamp(max(due, self.clock()), CHINA).isoformat(timespec="seconds")
             elif receipt.get("status") == "sent":
                 next_at = month_date(following_month(now), self.config["fee_day"], self.config["fee_time"]).isoformat(timespec="seconds")
+        prefix = "@全体成员\n" if self.config.get("at_all_enabled") and self.config.get("notification_provider") == "onebot" else ""
         return dict(busy=self.fee_busy, total=total_amount(self.config), next_at=next_at,
                     month=now.strftime("%Y-%m"), status=receipt.get("status", "pending"),
                     last_sent=receipt.get("sent_at"), error=self.fee_error or receipt.get("error", ""),
-                    preview="@全体成员\n" + fee_message(self.config, now))
+                    preview=prefix + fee_message(self.config, now, template=self.config.get("template_fee")))
 
     def send_fee(self):
         with self.condition:
@@ -427,32 +429,45 @@ class Monitor:
     def check_onebot(self):
         with self.lock:
             config = dict(self.config)
+        provider = config.get("notification_provider", "onebot")
         try:
-            if config.get("at_all_enabled", True):
-                result = GroupNotifier(config).check_at_all()
-            else:
+            if provider == "qq_official":
                 result = GroupNotifier(config).check_connection()
+                self.event("QQ 官方机器人凭据验证通过（成功获取 access_token）")
+                return result
+            elif provider == "none":
+                return {"status": "ok", "provider": "none"}
+            else:
+                if config.get("at_all_enabled", True):
+                    result = GroupNotifier(config).check_at_all()
+                    self.event("OneBot 连接及 @全体成员 权限检查通过（未发送消息）")
+                else:
+                    result = GroupNotifier(config).check_connection()
+                    self.event("OneBot 基础连接检查通过（未开启 @全体成员，未发送消息）")
+                return result
         except Exception as error:
             self.record_error(str(error))
             raise ValueError(self.last_error) from None
-        if config.get("at_all_enabled"):
-            self.event("OneBot 连接及 @全体成员 权限检查通过（未发送消息）")
-        else:
-            self.event("OneBot 基础连接检查通过（未开启 @全体成员，未发送消息）")
-        return result
 
     def test_send_message(self, test_text=None):
         with self.lock:
             config = dict(self.config)
+        provider = config.get("notification_provider", "onebot")
         if not test_text:
-            at_note = "（已开启 @全体成员）" if config.get("at_all_enabled") else "（未开启 @全体成员）"
-            test_text = "【SDUT 宿舍监控】这是一条测试消息，机器人与群通知配置正常！%s" % at_note
+            if provider == "qq_official":
+                test_text = "【SDUT 宿舍监控】这是一条测试消息，QQ 官方机器人与群通知配置正常！"
+            elif provider == "none":
+                raise ValueError("当前通知通道为『关闭外部推送』，无法发送测试群消息")
+            else:
+                at_note = "（已开启 @全体成员）" if config.get("at_all_enabled") else "（未开启 @全体成员）"
+                test_text = "【SDUT 宿舍监控】这是一条测试消息，OneBot 机器人与群通知配置正常！%s" % at_note
         try:
             result = GroupNotifier(config).send(test_text)
         except Exception as error:
             self.record_error(str(error))
             raise ValueError(self.last_error) from None
-        self.event("已向目标群发送测试消息")
+        target = "目标 QQ 群" if provider != "none" else "本地"
+        self.event("已向%s发送测试消息" % target)
         return result
 
     def capture_group(self):
@@ -725,7 +740,7 @@ def handler_for(app):
                     app.monitor.request_electricity(payload, query=False)
                 elif path == "/api/capture-group":
                     app.monitor.capture_group()
-                elif path == "/api/onebot-check":
+                elif path in ("/api/onebot-check", "/api/bot-check"):
                     result = app.monitor.check_onebot()
                     self.send(200, {"ok": True, "permissions": result})
                     return

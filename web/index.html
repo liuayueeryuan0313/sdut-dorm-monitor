@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css?v=20261017c"><script src="/app.js?v=20261017c" defer></script></head>
 <body>
 <div id="auth" class="auth-wrap">
   <div class="auth-card"><div class="brand-mark">寝</div><h1 id="auth-title">管理控制台</h1><p id="auth-copy" class="muted">正在连接服务…</p>
@@ -52,8 +52,8 @@
             <label for="notification-provider">发送通道</label>
             <select id="notification-provider">
               <option value="onebot">OneBot 11 HTTP (QQ群)</option>
+              <option value="qq_official">QQ 官方机器人</option>
               <option value="none">关闭外部推送 (仅网页记录)</option>
-              <option value="qq_official">QQ 官方</option>
             </select>
             <div id="onebot-fields">
               <label for="onebot-url">OneBot HTTP 地址</label><input id="onebot-url" placeholder="http://host.docker.internal:3000">
@@ -61,15 +61,11 @@
                 <div><label for="onebot-token">Access Token</label><input id="onebot-token" type="password" autocomplete="new-password" placeholder="访问令牌（可选）"></div>
                 <div><label for="onebot-group">目标 QQ 群号</label><input id="onebot-group" inputmode="numeric" placeholder="群号"></div>
               </div>
-              <div style="margin: 8px 0 10px 0;">
+              <div style="margin: 8px 0 6px 0;">
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);margin:0;">
                   <input id="at-all-enabled" type="checkbox" style="width:14px;height:14px;margin:0;accent-color:var(--accent-cyan);">
                   <span>启用 @全体成员（取消勾选则普通发送，机器人无需群管理员权限）</span>
                 </label>
-              </div>
-              <div style="display:flex;gap:8px;margin-top:4px;">
-                <button id="onebot-check" type="button" class="secondary channel-check" style="flex:1;">检查连接</button>
-                <button id="bot-test-send" type="button" class="secondary" style="flex:1;border-color:rgba(0,240,255,0.4);color:var(--accent-cyan);">测试发送信息</button>
               </div>
             </div>
             <div id="official-fields" hidden>
@@ -79,10 +75,17 @@
               </div>
               <label for="qq-group">目标群 group_openid</label>
               <div class="input-action"><input id="qq-group" name="qq_group_openid" placeholder="填写群标识"><button id="capture" type="button" class="secondary">获取群标识</button></div>
-              <p id="qq-note" hidden></p>
+              <p id="qq-note" style="font-size:11.5px;color:var(--text-muted);margin:6px 0 2px 0;">ℹ 官方 QQ 机器人支持普通群消息推送（无 @全体成员 限制，机器人无需管理员）。</p>
             </div>
-            <details style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">
-              <summary style="font-size:11.5px;color:var(--text-muted);cursor:pointer;user-select:none;">✎ 自定义通知消息内容（模板）</summary>
+            <div id="none-fields" hidden>
+              <p style="font-size:12px;color:var(--text-muted);margin:8px 0;">ℹ 已关闭外部群推送，仅在网页端记录查寝结果与电量，不向任何 QQ 群发送消息。</p>
+            </div>
+            <div id="channel-action-row" style="display:flex;gap:8px;margin-top:10px;">
+              <button id="channel-check" type="button" class="secondary channel-check" style="flex:1;">检查连接</button>
+              <button id="bot-test-send" type="button" class="secondary" style="flex:1;border-color:rgba(0,240,255,0.4);color:var(--accent-cyan);">测试发送信息</button>
+            </div>
+            <details style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;" open>
+              <summary style="font-size:12px;color:var(--accent-cyan);cursor:pointer;user-select:none;font-weight:500;">✎ 自定义通知消息内容（模板）</summary>
               <div style="margin-top:8px;">
                 <label for="template-dorm" style="font-size:11px;color:var(--text-secondary);">查寝通知模板 <span style="color:var(--text-muted);font-size:10px;">(变量: {date} {building} {room} {level} {score} {type} {week} {violation})</span></label>
                 <textarea id="template-dorm" rows="3" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认查寝模板"></textarea>
