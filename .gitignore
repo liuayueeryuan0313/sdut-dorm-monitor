@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 *.tar
 *.tar.gz
+.chrome_temp/
+
