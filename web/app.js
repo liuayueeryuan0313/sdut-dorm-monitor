@@ -28,6 +28,9 @@ function fillConfig(c) {
   $('onebot-url').value = c.onebot_url; $('onebot-group').value = c.onebot_group_id;
   $('onebot-token').value = '';
   $('onebot-token').placeholder = c.onebot_token_set ? '已保存 · 留空保持原令牌' : 'OneBot 访问令牌';
+  $('at-all-enabled').checked = Boolean(c.at_all_enabled);
+  $('template-dorm').value = c.template_dorm || '';
+  $('template-fee').value = c.template_fee || '';
   $('fee-enabled').checked = c.fee_enabled; $('fee-day').value = c.fee_day;
   $('fee-time').value = c.fee_time; $('fee-people').value = c.fee_people; $('fee-amount').value = c.fee_amount;
   $('sdut-pwd').placeholder = c.sdut_pwd_set ? '已保存 · 留空保持原密码' : '输入学校登录密码';
@@ -50,7 +53,18 @@ function updateFeePreview() {
     $('fee-total').textContent = total;
     const monthKey = snapshot?.fee?.month || new Date().toLocaleDateString('sv-SE', {timeZone:'Asia/Shanghai'}).slice(0, 7);
     const [year, month] = monthKey.split('-'); const title = year + '年' + Number(month) + '月';
-    $('fee-preview').textContent = '@全体成员\n【' + title + '宿舍网费缴纳通知】\n缴费人数：' + people + ' 人\n每人应缴：' + amount + ' 元\n本月合计：' + total + ' 元\n\n请大家前往微信宿舍群转账，每人转账 ' + amount + ' 元，并备注姓名和' + title + '网费。';
+    const atPrefix = $('at-all-enabled').checked ? '@全体成员\n' : '';
+    const customTpl = ($('template-fee').value || '').trim();
+    if (customTpl) {
+      const rendered = customTpl
+        .replace(/\{month\}/g, title)
+        .replace(/\{people\}/g, String(people))
+        .replace(/\{per_person\}/g, amount)
+        .replace(/\{total\}/g, total);
+      $('fee-preview').textContent = atPrefix + rendered;
+    } else {
+      $('fee-preview').textContent = atPrefix + '【' + title + '宿舍网费缴纳通知】\n缴费人数：' + people + ' 人\n每人应缴：' + amount + ' 元\n本月合计：' + total + ' 元\n\n请大家前往微信宿舍群转账，每人转账 ' + amount + ' 元，并备注姓名和' + title + '网费。';
+    }
   } catch { $('fee-total').textContent = '—'; $('fee-preview').textContent = '请填写有效的缴费人数和金额（最多两位小数）。'; }
 }
 function updatePresets() {
@@ -151,7 +165,16 @@ document.querySelectorAll('[data-minutes]').forEach(button => button.addEventLis
 $('config-form').addEventListener('submit', async event => {
   event.preventDefault(); $('save').disabled = true;
   try {
-    await api('/api/config', {sdut_user:$('sdut-user').value, sdut_pwd:$('sdut-pwd').value, qq_appid:$('qq-appid').value, qq_secret:$('qq-secret').value, qq_group_openid:$('qq-group').value, push_enabled:$('push-enabled').checked, poll_minutes:Number($('poll-minutes').value), lookback_days:Number($('lookback-days').value), notification_provider:$('notification-provider').value, onebot_url:$('onebot-url').value, onebot_token:$('onebot-token').value, onebot_group_id:$('onebot-group').value, fee_enabled:$('fee-enabled').checked, fee_day:Number($('fee-day').value), fee_time:$('fee-time').value, fee_people:Number($('fee-people').value), fee_amount:$('fee-amount').value});
+    await api('/api/config', {
+      sdut_user:$('sdut-user').value, sdut_pwd:$('sdut-pwd').value,
+      qq_appid:$('qq-appid').value, qq_secret:$('qq-secret').value, qq_group_openid:$('qq-group').value,
+      push_enabled:$('push-enabled').checked, poll_minutes:Number($('poll-minutes').value), lookback_days:Number($('lookback-days').value),
+      notification_provider:$('notification-provider').value, onebot_url:$('onebot-url').value, onebot_token:$('onebot-token').value,
+      onebot_group_id:$('onebot-group').value, at_all_enabled:$('at-all-enabled').checked,
+      template_dorm:$('template-dorm').value, template_fee:$('template-fee').value,
+      fee_enabled:$('fee-enabled').checked, fee_day:Number($('fee-day').value), fee_time:$('fee-time').value,
+      fee_people:Number($('fee-people').value), fee_amount:$('fee-amount').value
+    });
     hydrated = false; await refresh(); $('save-state').textContent = '✓ 配置已保存 · 无需重启服务'; toast('配置已保存，刷新计划已更新');
   } catch (error) { toast(error.message, true); }
   finally { $('save').disabled = false; }
@@ -160,11 +183,27 @@ $('preview').addEventListener('click', () => dirty ? toast('请先保存配置',
 $('toggle').addEventListener('click', () => dirty && !snapshot.config.enabled ? toast('请先保存配置', true) : action(snapshot.config.enabled ? '/api/stop' : '/api/start', snapshot.config.enabled ? '监测已停止' : '监测已启动'));
 $('capture').addEventListener('click', () => dirty ? toast('请先保存机器人配置', true) : action('/api/capture-group', '正在连接，请在目标群 @ 机器人'));
 $('onebot-check').addEventListener('click', async () => {
-  if (dirty) { toast('请先保存 OneBot 配置', true); return; }
+  if (dirty) { toast('请先保存群通知配置', true); return; }
   $('onebot-check').disabled = true;
-  try { await api('/api/onebot-check', {}); toast('OneBot 连接及 @全体权限检查通过，未发送消息'); await refresh(); }
+  try {
+    await api('/api/onebot-check', {});
+    const atAll = $('at-all-enabled').checked;
+    toast(atAll ? 'OneBot 连接及 @全体权限检查通过，未发送消息' : 'OneBot 基础连接检查通过，未发送消息');
+    await refresh();
+  }
   catch (error) { toast(error.message, true); }
   finally { $('onebot-check').disabled = false; }
+});
+$('bot-test-send').addEventListener('click', async () => {
+  if (dirty) { toast('请先保存群通知配置', true); return; }
+  $('bot-test-send').disabled = true;
+  try {
+    await api('/api/bot-test-send', {});
+    toast('测试消息已成功发送至目标群，请前往 QQ 查看');
+    await refresh();
+  }
+  catch (error) { toast(error.message, true); }
+  finally { $('bot-test-send').disabled = false; }
 });
 $('fee-retry').addEventListener('click', () => dirty ? toast('请先保存配置', true) : action('/api/fee-retry', '已按你的确认安排重试，请留意群消息'));
 $('logout').addEventListener('click', async () => { await action('/api/logout', '已退出'); location.reload(); });

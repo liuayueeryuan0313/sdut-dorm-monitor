@@ -170,7 +170,23 @@ class Fetcher:
 
 # ------------------------- 消息格式 -------------------------
 
-def format_record(rec):
+def format_record(rec, template=None):
+    if template and template.strip():
+        mapping = {
+            "date": str(rec.get("JCRQ") or "-"),
+            "building": str(rec.get("SSLMC") or "-"),
+            "room": str(rec.get("FJH") or "-"),
+            "level": str(rec.get("DJMC") or "-"),
+            "score": str(rec.get("FS")) if rec.get("FS") is not None else "-",
+            "type": str(rec.get("JCLXDM_DISPLAY") or "-"),
+            "week": str(rec.get("ZC") or "-"),
+            "violation": str(rec.get("WGXX") or "无"),
+        }
+        res = template
+        for k, v in mapping.items():
+            res = res.replace("{" + k + "}", v)
+        return res
+
     lines = ["【查寝结果】%s" % (rec.get("JCRQ") or "未知日期")]
     lines.append("宿舍：%s %s" % (rec.get("SSLMC") or "-", rec.get("FJH") or "-"))
     lines.append("等级：%s　分数：%s" % (rec.get("DJMC") or "-",
@@ -187,11 +203,11 @@ def format_record(rec):
     return "\n".join(lines)
 
 
-def format_batch(records):
+def format_batch(records, template=None):
     if len(records) == 1:
-        return format_record(records[0])
+        return format_record(records[0], template)
     return "【查寝结果】新增 %d 条" % len(records) + "\n\n" + \
-        "\n\n".join(format_record(r) for r in records)
+        "\n\n".join(format_record(r, template) for r in records)
 
 
 # ------------------------- 调度 -------------------------

@@ -31,6 +31,7 @@ DEFAULTS = dict(sdut_user="", sdut_pwd="", qq_appid="", qq_secret="",
                 qq_group_openid="", poll_minutes=15.0, lookback_days=45,
                 push_enabled=False, enabled=False,
                 notification_provider="onebot", onebot_url="", onebot_token="", onebot_group_id="",
+                at_all_enabled=True, template_dorm="", template_fee="",
                 fee_enabled=False, fee_day=1, fee_time="09:00", fee_people=4, fee_amount="20.00",
                 elc_campus="西校区", elc_building="26号北楼", elc_floor="8", elc_room="814",
                 elc_type="照明插座", elc_enabled=False, elc_minutes=60.0)
@@ -138,11 +139,17 @@ class Monitor:
                     continue  # Blank means keep existing secret.
                 updated[key] = value
             for key in ("sdut_user", "sdut_pwd", "qq_appid", "qq_secret", "qq_group_openid",
-                        "onebot_url", "onebot_token", "onebot_group_id", "notification_provider", "fee_time", *ELC_FIELDS):
-                if not isinstance(updated[key], str) or len(updated[key]) > 1024:
-                    raise ValueError("账号及密钥必须为字符串，最多 1024 字符")
-                if key not in SECRET_FIELDS:
+                        "onebot_url", "onebot_token", "onebot_group_id", "notification_provider", "fee_time",
+                        "template_dorm", "template_fee", *ELC_FIELDS):
+                if key not in updated:
+                    continue
+                if not isinstance(updated[key], str) or len(updated[key]) > 4096:
+                    raise ValueError("文本字段类型错误或超长，最多 4096 字符")
+                if key not in SECRET_FIELDS and not key.startswith("template_"):
                     updated[key] = updated[key].strip()
+            if "at_all_enabled" in updated:
+                if not isinstance(updated["at_all_enabled"], bool):
+                    raise ValueError("是否 @全体成员 必须为布尔值")
             value = updated["poll_minutes"]
             if isinstance(value, bool):
                 raise ValueError("刷新间隔必须是数字")
@@ -157,7 +164,7 @@ class Monitor:
                 raise ValueError("回溯天数须为 1 至 3650 的整数")
             if not isinstance(updated["push_enabled"], bool):
                 raise ValueError("推送开关必须为布尔值")
-            if updated["notification_provider"] not in ("onebot", "qq_official"):
+            if updated["notification_provider"] not in ("onebot", "none", "qq_official"):
                 raise ValueError("通知通道不正确")
             if not isinstance(updated["fee_enabled"], bool):
                 raise ValueError("网费提醒开关必须为布尔值")
@@ -167,7 +174,7 @@ class Monitor:
             if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", updated["fee_time"]):
                 raise ValueError("发送时间须为 HH:MM，例如 09:00")
             updated["fee_amount"] = money(updated["fee_amount"])
-            if updated["fee_enabled"]:
+            if updated["fee_enabled"] and updated["notification_provider"] != "none":
                 validate_notification(updated)
             if updated["elc_campus"] not in ("西校区", "东校区") or updated["elc_type"] not in ("照明插座", "空调用电"):
                 raise ValueError("电费校区或用电类型不正确")
@@ -224,7 +231,7 @@ class Monitor:
     def validate_ready(config):
         if not config["sdut_user"] or not config["sdut_pwd"]:
             raise ValueError("请先保存学校账号和密码")
-        if config["push_enabled"]:
+        if config["push_enabled"] and config.get("notification_provider") != "none":
             validate_notification(config)
 
     def set_enabled(self, enabled):
@@ -305,12 +312,13 @@ class Monitor:
                     notifier = GroupNotifier(config)
                     for offset in range(0, len(fresh), 5):
                         batch = fresh[offset:offset + 5]
-                        notifier.send(format_batch(batch))
+                        notifier.send(format_batch(batch, template=config.get("template_dorm")))
                         seen.update(row["WID"] for row in batch)
                         state.update(seen=sorted(seen), initialized=True, last_push=timestamp())
                         write_json(self.state_path(), state)
                     self.fresh_count = 0
-                    self.event("已 @全体成员 推送 %d 条新记录至目标群" % len(fresh))
+                    at_text = " @全体成员" if config.get("at_all_enabled") else ""
+                    self.event("已%s 推送 %d 条新记录至目标群" % (at_text, len(fresh)))
                 self.last_success = checked
                 self.last_error = ""
                 self.event("%s完成：%d 条记录，%d 条未读" %
@@ -383,11 +391,12 @@ class Monitor:
             write_json(self.fee_journal_path, self.fee_journal)
             self.fee_busy = True
             try:
-                result = GroupNotifier(config).send(fee_message(config, now))
-                self.fee_journal[key].update(status="sent", sent_at=timestamp(), message_id=result["message_id"])
+                result = GroupNotifier(config).send(fee_message(config, now, template=config.get("template_fee")))
+                self.fee_journal[key].update(status="sent", sent_at=timestamp(), message_id=result.get("message_id", 0))
                 self.fee_error = ""
-                self.event("已 @全体成员 发送本月网费通知：%d 人，每人 %s 元，合计 %s 元" % (
-                    config["fee_people"], config["fee_amount"], total_amount(config)))
+                at_text = " @全体成员" if config.get("at_all_enabled") else ""
+                self.event("已%s 发送本月网费通知：%d 人，每人 %s 元，合计 %s 元" % (
+                    at_text, config["fee_people"], config["fee_amount"], total_amount(config)))
             except Exception as error:
                 message = str(error)
                 for field in SECRET_FIELDS:
@@ -419,11 +428,31 @@ class Monitor:
         with self.lock:
             config = dict(self.config)
         try:
-            result = GroupNotifier(config).check_at_all()
+            if config.get("at_all_enabled", True):
+                result = GroupNotifier(config).check_at_all()
+            else:
+                result = GroupNotifier(config).check_connection()
         except Exception as error:
             self.record_error(str(error))
             raise ValueError(self.last_error) from None
-        self.event("OneBot 连接及 @全体成员 权限检查通过（未发送消息）")
+        if config.get("at_all_enabled"):
+            self.event("OneBot 连接及 @全体成员 权限检查通过（未发送消息）")
+        else:
+            self.event("OneBot 基础连接检查通过（未开启 @全体成员，未发送消息）")
+        return result
+
+    def test_send_message(self, test_text=None):
+        with self.lock:
+            config = dict(self.config)
+        if not test_text:
+            at_note = "（已开启 @全体成员）" if config.get("at_all_enabled") else "（未开启 @全体成员）"
+            test_text = "【SDUT 宿舍监控】这是一条测试消息，机器人与群通知配置正常！%s" % at_note
+        try:
+            result = GroupNotifier(config).send(test_text)
+        except Exception as error:
+            self.record_error(str(error))
+            raise ValueError(self.last_error) from None
+        self.event("已向目标群发送测试消息")
         return result
 
     def capture_group(self):
@@ -607,7 +636,7 @@ def handler_for(app):
             hostname = urlparse("//" + self.headers.get("Host", "")).hostname
             allowed = {name.strip().lower() for name in os.environ.get(
                 "WEBUI_ALLOWED_HOSTS", "127.0.0.1,localhost,::1").split(",")}
-            return hostname is not None and hostname.lower() in allowed
+            return "*" in allowed or (hostname is not None and hostname.lower() in allowed)
 
         def log_message(self, *args):
             pass  # Never log request bodies or credential query strings.
@@ -699,6 +728,10 @@ def handler_for(app):
                 elif path == "/api/onebot-check":
                     result = app.monitor.check_onebot()
                     self.send(200, {"ok": True, "permissions": result})
+                    return
+                elif path == "/api/bot-test-send":
+                    result = app.monitor.test_send_message(payload.get("message") if isinstance(payload, dict) else None)
+                    self.send(200, {"ok": True, "result": result})
                     return
                 elif path == "/api/fee-retry":
                     app.monitor.retry_fee()

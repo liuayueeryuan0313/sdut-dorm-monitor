@@ -51,7 +51,8 @@
             <div class="panel-title"><span class="icon-box blue">↗</span><div><h3>群通知</h3></div><label class="switch"><input id="push-enabled" type="checkbox" aria-label="启用 QQ 推送"><span></span></label></div>
             <label for="notification-provider">发送通道</label>
             <select id="notification-provider">
-              <option value="onebot">OneBot · 原生 @全体成员</option>
+              <option value="onebot">OneBot 11 HTTP (QQ群)</option>
+              <option value="none">关闭外部推送 (仅网页记录)</option>
               <option value="qq_official">QQ 官方</option>
             </select>
             <div id="onebot-fields">
@@ -60,7 +61,16 @@
                 <div><label for="onebot-token">Access Token</label><input id="onebot-token" type="password" autocomplete="new-password" placeholder="访问令牌（可选）"></div>
                 <div><label for="onebot-group">目标 QQ 群号</label><input id="onebot-group" inputmode="numeric" placeholder="群号"></div>
               </div>
-              <button id="onebot-check" type="button" class="secondary channel-check">检查连接和 @全体权限</button>
+              <div style="margin: 8px 0 10px 0;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-secondary);margin:0;">
+                  <input id="at-all-enabled" type="checkbox" style="width:14px;height:14px;margin:0;accent-color:var(--accent-cyan);">
+                  <span>启用 @全体成员（取消勾选则普通发送，机器人无需群管理员权限）</span>
+                </label>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:4px;">
+                <button id="onebot-check" type="button" class="secondary channel-check" style="flex:1;">检查连接</button>
+                <button id="bot-test-send" type="button" class="secondary" style="flex:1;border-color:rgba(0,240,255,0.4);color:var(--accent-cyan);">测试发送信息</button>
+              </div>
             </div>
             <div id="official-fields" hidden>
               <div class="split">
@@ -71,6 +81,15 @@
               <div class="input-action"><input id="qq-group" name="qq_group_openid" placeholder="填写群标识"><button id="capture" type="button" class="secondary">获取群标识</button></div>
               <p id="qq-note" hidden></p>
             </div>
+            <details style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">
+              <summary style="font-size:11.5px;color:var(--text-muted);cursor:pointer;user-select:none;">✎ 自定义通知消息内容（模板）</summary>
+              <div style="margin-top:8px;">
+                <label for="template-dorm" style="font-size:11px;color:var(--text-secondary);">查寝通知模板 <span style="color:var(--text-muted);font-size:10px;">(变量: {date} {building} {room} {level} {score} {type} {week} {violation})</span></label>
+                <textarea id="template-dorm" rows="3" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认查寝模板"></textarea>
+                <label for="template-fee" style="font-size:11px;color:var(--text-secondary);margin-top:6px;">网费提醒模板 <span style="color:var(--text-muted);font-size:10px;">(变量: {month} {people} {per_person} {total})</span></label>
+                <textarea id="template-fee" rows="3" style="width:100%;font-size:11.5px;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:6px;box-sizing:border-box;resize:vertical;font-family:inherit;" placeholder="留空使用默认网费提醒模板"></textarea>
+              </div>
+            </details>
           </article>
         </div>
         <article class="panel schedule">

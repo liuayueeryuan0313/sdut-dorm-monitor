@@ -211,6 +211,37 @@ class OneBotTests(unittest.TestCase):
         with patch.object(notifier, "call", side_effect=[{"can_at_all": True}, {}]), self.assertRaises(RuntimeError):
             notifier.send("notice")
 
+    def test_send_without_at_all_sends_plain_text(self):
+        config = {**self.config, "at_all_enabled": False}
+        notifier = GroupNotifier(config)
+        with patch.object(notifier, "call", return_value={"message_id": 999}) as request:
+            result = notifier.send("plain test message")
+        self.assertEqual(len(request.call_args_list), 1)
+        action, payload = request.call_args.args
+        self.assertEqual(action, "send_group_msg")
+        self.assertEqual(payload["message"], [{"type": "text", "data": {"text": "plain test message"}}])
+        self.assertEqual(result["message_id"], 999)
+
+    def test_notification_provider_none_is_valid_and_noop(self):
+        config = {**self.config, "notification_provider": "none"}
+        validate_notification(config)
+        notifier = GroupNotifier(config)
+        res = notifier.send("should not send externally")
+        self.assertEqual(res.get("status"), "ok")
+
+    def test_custom_fee_template_replaces_placeholders(self):
+        tpl = "本月{month}，一共{people}位室友，每人{per_person}元，总计{total}元！"
+        msg = fee_message({"fee_amount": "25.00", "fee_people": 4, "template_fee": tpl},
+                          datetime(2026, 11, 1, tzinfo=CHINA))
+        self.assertEqual(msg, "本月2026年11月，一共4位室友，每人25.00元，总计100.00元！")
+
+    def test_custom_dorm_template_replaces_placeholders(self):
+        from sync_qqbot import format_record
+        tpl = "【通报】{date} {building} {room} 得分：{score} 等级：{level} 违规：{violation}"
+        rec = {"JCRQ": "2026-10-18", "SSLMC": "26号北楼", "FJH": "814", "FS": 98.5, "DJMC": "优秀", "WGXX": "无违规"}
+        rendered = format_record(rec, template=tpl)
+        self.assertEqual(rendered, "【通报】2026-10-18 26号北楼 814 得分：98.5 等级：优秀 违规：无违规")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

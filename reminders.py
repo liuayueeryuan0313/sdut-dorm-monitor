@@ -36,14 +36,28 @@ def following_month(now):
     return now.replace(year=now.year + (now.month == 12), month=now.month % 12 + 1, day=1)
 
 
-def fee_message(config, now):
+def fee_message(config, now, template=None):
     now = now.astimezone(CHINA)
     month = "%d年%d月" % (now.year, now.month)
     amount = money(config["fee_amount"])
+    total = total_amount(config)
+    tpl = template or config.get("template_fee")
+    if tpl and tpl.strip():
+        res = tpl
+        mapping = {
+            "month": month,
+            "people": str(config["fee_people"]),
+            "per_person": str(amount),
+            "total": str(total),
+        }
+        for k, v in mapping.items():
+            res = res.replace("{" + k + "}", v)
+        return res
+
     return ("【%s宿舍网费缴纳通知】\n"
             "缴费人数：%d 人\n"
             "每人应缴：%s 元\n"
             "本月合计：%s 元\n\n"
             "请大家前往微信宿舍群转账，每人转账 %s 元，"
             "并备注姓名和%s网费。") % (
-                month, config["fee_people"], amount, total_amount(config), amount, month)
+                month, config["fee_people"], amount, total, amount, month)
