@@ -1,7 +1,7 @@
 services:
   monitor:
     build: .
-    image: sdut-dorm-monitor:latest
+    image: aweo/sdut-dorm-monitor:latest
     init: true
     restart: unless-stopped
     ports:

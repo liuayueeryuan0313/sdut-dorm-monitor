@@ -6,10 +6,19 @@
 
 ## 启动
 
+### 方式一：直接拉取 Docker Hub 镜像运行（推荐）
+
+```bash
+docker pull aweo/sdut-dorm-monitor:latest
+docker run -d --name sdut-dorm-monitor -p 8787:8787 -v $(pwd)/data:/app/data --restart unless-stopped aweo/sdut-dorm-monitor:latest
+```
+
+### 方式二：Docker Compose 启动
+
 在本目录执行：
 
 ```powershell
-docker compose up -d --build
+docker compose up -d
 ```
 
 然后打开 **[http://127.0.0.1:8787](http://127.0.0.1:8787)**。
