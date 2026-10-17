@@ -228,6 +228,42 @@ class FeatureEnhancementsTests(unittest.TestCase):
             logs = snapshot["logs"]
             self.assertTrue(any("复用现有学校认证会话" in log["message"] for log in logs))
 
+    def test_dorm_push_toggle_and_html_panel(self):
+        # Verify HTML contains the push toggle card inside #view-records
+        status, _, data = self.request("GET", "/")
+        self.assertEqual(status, 200)
+        html = data.decode("utf-8")
+        self.assertIn('id="dorm-push-enabled"', html)
+        self.assertIn('id="dorm-push-badge"', html)
+
+        # Configure both push_enabled and electricity
+        self.monitor.save_config({
+            "sdut_user": "2021001",
+            "sdut_pwd": "pwd",
+            "push_enabled": True,
+            "dorm_push_enabled": False,  # Dorm notifications specifically disabled
+            "onebot_url": "http://127.0.0.1:3000",
+            "onebot_group_id": "123456",
+            "notification_provider": "onebot"
+        })
+        self.monitor.set_enabled(True)
+        webui.write_json(self.monitor.state_path(), {"seen": [], "initialized": True})
+
+        with patch("webui.GroupNotifier") as mock_notifier_cls:
+            self.monitor.poll()
+            # Since dorm_push_enabled is False, dorm records are not pushed!
+            mock_notifier_cls.assert_not_called()
+
+        # Now re-enable dorm_push_enabled
+        self.monitor.save_config({"dorm_push_enabled": True})
+        with patch("webui.GroupNotifier") as mock_notifier_cls:
+            notifier = Mock()
+            mock_notifier_cls.return_value = notifier
+            self.monitor.poll()
+            # Now records are pushed!
+            notifier.send.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

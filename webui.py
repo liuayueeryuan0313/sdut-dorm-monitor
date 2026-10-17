@@ -29,7 +29,7 @@ HERE = Path(__file__).resolve().parent
 CHINA = timezone(timedelta(hours=8))
 DEFAULTS = dict(sdut_user="", sdut_pwd="", qq_appid="", qq_secret="",
                 qq_group_openid="", poll_minutes=15.0, lookback_days=45,
-                push_enabled=False, enabled=False,
+                push_enabled=False, enabled=False, dorm_push_enabled=True,
                 notification_provider="onebot", onebot_url="", onebot_token="", onebot_group_id="",
                 at_all_enabled=True, template_dorm="", template_fee="", template_elc="",
                 fee_enabled=False, fee_day=1, fee_time="09:00", fee_people=4, fee_amount="20.00",
@@ -202,6 +202,9 @@ class Monitor:
                 raise ValueError("回溯天数须为 1 至 3650 的整数")
             if not isinstance(updated["push_enabled"], bool):
                 raise ValueError("推送开关必须为布尔值")
+            if "dorm_push_enabled" in updated:
+                if not isinstance(updated["dorm_push_enabled"], bool):
+                    raise ValueError("查寝推送开关必须为布尔值")
             if updated["notification_provider"] not in ("onebot", "none", "qq_official"):
                 raise ValueError("通知通道不正确")
             if not isinstance(updated["fee_enabled"], bool):
@@ -494,12 +497,13 @@ class Monitor:
                 write_json(self.data_dir / "webui_records.json",
                            dict(account_key=self.account_key(), checked_at=checked, rows=rows))
                 deliver = not preview and self.config["enabled"]
+                dorm_push = config.get("push_enabled") and config.get("dorm_push_enabled", True)
                 if deliver and not state["initialized"]:
                     state.update(seen=sorted(seen | {row["WID"] for row in rows}), initialized=True)
                     write_json(self.state_path(), state)
                     self.fresh_count = 0
                     self.log_event("dorm", "info", "首次运行已建立 %d 条基线，不推送历史记录" % len(rows))
-                elif deliver and fresh and config["push_enabled"] and self.config["push_enabled"]:
+                elif deliver and fresh and dorm_push and self.config.get("push_enabled") and self.config.get("dorm_push_enabled", True):
                     notifier = GroupNotifier(config)
                     for offset in range(0, len(fresh), 5):
                         batch = fresh[offset:offset + 5]
@@ -510,6 +514,8 @@ class Monitor:
                     self.fresh_count = 0
                     at_text = " @全体成员" if config.get("at_all_enabled") and config.get("notification_provider") == "onebot" else ""
                     self.log_event("bot", "success", "已%s 推送 %d 条新记录至目标群" % (at_text, len(fresh)))
+                elif deliver and fresh and not dorm_push:
+                    self.log_event("dorm", "info", "检测到 %d 条新查寝记录（查寝推送已关闭，保留待推送）" % len(fresh))
                 self.last_success = checked
                 self.last_error = ""
                 self.log_event("dorm", "success", "%s完成：%d 条记录，%d 条未读" %

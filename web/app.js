@@ -67,6 +67,9 @@ function fillConfig(c) {
   $('qq-appid').value = c.qq_appid || '';
   $('qq-group').value = c.qq_group_openid || '';
   $('push-enabled').checked = Boolean(c.push_enabled);
+  if ($('dorm-push-enabled')) {
+    $('dorm-push-enabled').checked = Boolean(c.push_enabled && c.dorm_push_enabled !== false);
+  }
   $('poll-minutes').value = c.poll_minutes;
   $('lookback-days').value = c.lookback_days;
   $('sdut-pwd').value = '';
@@ -340,6 +343,33 @@ async function refresh() {
     $('connection').textContent = '● 服务已连接';
     $('records-copy').textContent = snapshot.fresh_count ? snapshot.fresh_count + ' 条未读记录 · 手动采集不推送；QQ 未启用时保留待推送。' : '手动采集不会发送 QQ 消息，也不会改变已读状态。';
 
+    // Update Dorm Push Status Badge and Description
+    if ($('dorm-push-enabled')) {
+      const isDormPush = Boolean(c.push_enabled && c.dorm_push_enabled !== false);
+      if (!dirty) $('dorm-push-enabled').checked = isDormPush;
+      const badge = $('dorm-push-badge');
+      const desc = $('records-push-desc');
+      if (badge && desc) {
+        if (!c.push_enabled || c.dorm_push_enabled === false) {
+          badge.className = 'mini-status';
+          badge.textContent = '已关闭推送';
+          desc.innerHTML = '已关闭查寝新记录群通知，发现新记录仅在网页端更新流水。<a href="#configuration" class="switch-view-btn" data-target="configuration" style="color:var(--accent-cyan);margin-left:6px;text-decoration:none;cursor:pointer;">前往配置机器人 ↗</a>';
+        } else if (c.notification_provider === 'qq_official') {
+          badge.className = 'mini-status ready';
+          badge.textContent = 'QQ 官方机器人推送中';
+          desc.innerHTML = '发现新查寝记录将自动推送到绑定的 QQ 群。';
+        } else if (c.notification_provider === 'onebot') {
+          badge.className = 'mini-status ready';
+          badge.textContent = c.onebot_group_id ? ('OneBot: ' + c.onebot_group_id) : 'OneBot 已开启';
+          desc.innerHTML = c.onebot_group_id ? ('发现新查寝记录将推送到 QQ 群 <code>' + c.onebot_group_id + '</code>' + (c.at_all_enabled ? '（含 @全体成员）' : '')) : '请在「连接与计划」设置目标群号。';
+        } else {
+          badge.className = 'mini-status';
+          badge.textContent = '未配置通道';
+          desc.innerHTML = '尚未选择发送通道。<a href="#configuration" class="switch-view-btn" data-target="configuration" style="color:var(--accent-cyan);margin-left:6px;text-decoration:none;cursor:pointer;">前往配置 ↗</a>';
+        }
+      }
+    }
+
     const fee = snapshot.fee;
     $('fee-state').textContent = fee.busy ? '正在 @全体发送' : !c.fee_enabled ? '提醒已关闭' : fee.status === 'sent' ? '本月已发送' : ['failed','sending'].includes(fee.status) ? '发送失败或结果待确认' : '每月提醒已开启';
     $('fee-next').textContent = !c.fee_enabled ? '开启后独立运行，不依赖查寝监测开关' : fee.next_at ? '下次：' + new Date(fee.next_at).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai',hour12:false}) + ' · 北京时间' : '请先核对群内是否已收到，再决定是否重试';
@@ -434,6 +464,7 @@ $('config-form').addEventListener('submit', async event => {
       qq_secret: $('qq-secret').value,
       qq_group_openid: $('qq-group').value,
       push_enabled: $('push-enabled').checked,
+      dorm_push_enabled: $('dorm-push-enabled') ? $('dorm-push-enabled').checked : true,
       poll_minutes: Number($('poll-minutes').value),
       lookback_days: Number($('lookback-days').value),
       notification_provider: $('notification-provider').value,
@@ -461,6 +492,25 @@ $('config-form').addEventListener('submit', async event => {
     $('save').disabled = false;
   }
 });
+
+// Direct dorm push toggle in records view
+if ($('dorm-push-enabled')) {
+  $('dorm-push-enabled').addEventListener('change', async () => {
+    const enabled = $('dorm-push-enabled').checked;
+    try {
+      const payload = { dorm_push_enabled: enabled };
+      if (enabled && snapshot && snapshot.config && !snapshot.config.push_enabled) {
+        payload.push_enabled = true;
+      }
+      await api('/api/config', payload);
+      toast(enabled ? '查寝新记录群通知推送已开启' : '查寝新记录群通知推送已关闭');
+      await refresh();
+    } catch (err) {
+      $('dorm-push-enabled').checked = !enabled;
+      toast(err.message, true);
+    }
+  });
+}
 
 // Action buttons
 const triggerPreview = () => dirty ? toast('请先保存配置', true) : action('/api/preview', '已开始手动采集，不发送消息');
@@ -572,8 +622,12 @@ document.querySelectorAll('.nav-item').forEach(link => {
   });
 });
 
-document.querySelectorAll('.switch-view-btn').forEach(btn => {
-  btn.addEventListener('click', () => switchView(btn.dataset.target));
+document.addEventListener('click', event => {
+  const btn = event.target.closest('.switch-view-btn');
+  if (btn && btn.dataset.target) {
+    event.preventDefault();
+    switchView(btn.dataset.target);
+  }
 });
 
 window.addEventListener('hashchange', () => {

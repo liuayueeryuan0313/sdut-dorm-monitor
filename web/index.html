@@ -196,8 +196,33 @@
     <section class="view-panel" id="view-records" hidden>
       <div class="section-heading" style="display:flex; justify-content:space-between; align-items:center;">
         <div><h2>查寝记录 <span id="rows-label" class="count-chip">0</span></h2><p id="records-copy" hidden></p></div>
-        <button id="records-refresh-btn" type="button" class="secondary" style="font-size:11.5px; padding: 4px 12px;">↻ 立即采集新数据</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="records-refresh-btn" type="button" class="secondary" style="font-size:11.5px; padding: 4px 12px;">↻ 立即采集新数据</button>
+        </div>
       </div>
+
+      <!-- 查寝新记录群通知推送控制卡片 -->
+      <article class="panel records-push-card">
+        <div class="records-push-bar">
+          <div class="records-push-info">
+            <span class="icon-box blue">↗</span>
+            <div>
+              <div class="records-push-header">
+                <h3>查寝新记录群通知推送</h3>
+                <span id="dorm-push-badge" class="mini-status records-push-badge-wrap">待检查</span>
+              </div>
+              <p id="records-push-desc" class="records-push-desc">发现新查寝记录时自动推送到目标群</p>
+            </div>
+          </div>
+          <div class="records-push-switch-wrap">
+            <label class="switch">
+              <input id="dorm-push-enabled" type="checkbox" aria-label="启用查寝新记录群通知推送">
+              <span></span>
+            </label>
+          </div>
+        </div>
+      </article>
+
       <div class="panel table-panel">
         <div class="table-scroll"><table><thead><tr><th>检查日期</th><th>宿舍</th><th>检查类型</th><th>分数</th><th>等级</th><th>备注 / 违规信息</th></tr></thead><tbody id="record-body"></tbody></table></div>
         <div id="empty-records" class="empty"><span>▤</span><h3>暂无查寝记录</h3><p class="muted">请在「连接与计划」配置学校账号并保存后点击采集。</p></div>

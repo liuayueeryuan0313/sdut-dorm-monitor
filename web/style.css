@@ -1531,3 +1531,62 @@ footer {
   color: #fda4af;
 }
 
+/* Records Dorm Push Banner */
+.records-push-card {
+  margin-bottom: 16px;
+  padding: 14px 18px;
+}
+
+.records-push-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.records-push-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.records-push-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.records-push-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.records-push-badge-wrap {
+  margin-left: 0 !important;
+}
+
+.records-push-desc {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.records-push-desc a {
+  color: var(--cyan);
+  text-decoration: none;
+  margin-left: 6px;
+}
+
+.records-push-desc a:hover {
+  text-decoration: underline;
+}
+
+.records-push-switch-wrap {
+  flex-shrink: 0;
+}
+
+
