@@ -1,0 +1,14 @@
+*
+!Dockerfile
+!aes_tool.py
+!sdut_login.py
+!sdut_ssws.py
+!export_ssws.py
+!sync_qqbot.py
+!get_group_openid.py
+!webui.py
+!notifications.py
+!reminders.py
+!sdut_electricity.py
+!web/
+!web/**

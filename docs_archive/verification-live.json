@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-10-17T00:55:45+08:00",
+  "qq_messages_sent": 0,
+  "login_attempt_limit": 1,
+  "status": "passed",
+  "login_and_role_bootstrap": "passed",
+  "session_reuse": "passed",
+  "role_count": 1,
+  "record_count": 34,
+  "unique_wid_count": 34,
+  "date_min": "2025-10-13",
+  "date_max": "2026-10-15",
+  "lookback_start": "2026-09-02",
+  "lookback_end": "2026-10-17",
+  "lookback_count": 4,
+  "date_filter": "passed",
+  "unseen_count": 0,
+  "baseline_unchanged": true
+}

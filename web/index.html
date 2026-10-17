@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<div id="auth" class="auth-wrap">
+  <div class="auth-card"><div class="brand-mark">寝</div><h1 id="auth-title">管理控制台</h1><p id="auth-copy" class="muted">正在连接服务…</p>
+    <form id="auth-form"><label for="admin-password">管理密码</label><input id="admin-password" type="password" minlength="10" maxlength="256" required autocomplete="current-password" placeholder="至少 10 个字符"><button class="primary wide" id="auth-submit" type="submit">进入控制台 <span>↗</span></button><p id="auth-error" class="error-text" role="alert"></p></form>
+  </div>
+</div>
+<div id="app" class="shell" hidden>
+  <div class="top-nav-container">
+    <nav class="top-nav">
+      <div class="nav-links">
+        <a class="nav-item selected" href="#overview"><span>▦</span>监测概览</a>
+        <a class="nav-item" href="#configuration"><span>⚙</span>连接与计划</a>
+        <a class="nav-item" href="#records"><span>▤</span>查寝记录</a>
+        <a class="nav-item" href="#electricity"><span>ϟ</span>宿舍电量</a>
+        <a class="nav-item" href="#activity"><span>≋</span>运行日志</a>
+      </div>
+      <div class="nav-meta">
+        <span class="meta-status"><span class="online-dot"></span>本地空间</span>
+        <button id="logout" class="text-btn">退出 ↗</button>
+      </div>
+    </nav>
+  </div>
+  <main>
+    <header id="overview">
+      <div class="header-right">
+        <span id="connection" class="connection">● 服务已连接</span>
+        <span id="run-badge" class="pill neutral">监测已停止</span>
+      </div>
+    </header>
+    <section class="stats" aria-label="监测状态">
+      <article class="stat"><span class="stat-label">当前记录 <span>▤</span></span><strong id="record-count">0<small> 条</small></strong></article>
+      <article class="stat"><span class="stat-label">刷新间隔 <span>◷</span></span><strong id="interval-value">15<small> 分钟</small></strong></article>
+      <article class="stat"><span class="stat-label">最近采集 <span>↻</span></span><strong id="last-success" class="time-value">尚未采集</strong><p id="last-date" class="stat-sub"></p></article>
+      <article class="stat mint"><span class="stat-label">下一次采集 <span>↗</span></span><strong id="countdown" class="time-value">等待启动</strong><p id="next-copy" class="stat-sub"></p></article>
+    </section>
+    <div id="last-error" class="error-banner" role="alert" hidden></div>
+    <section class="section" id="configuration">
+      <div class="section-heading"><div><h2>连接与计划</h2></div><span class="tiny-label">01 / CONFIGURATION</span></div>
+      <form id="config-form">
+        <div class="config-grid">
+          <article class="panel">
+            <div class="panel-title"><span class="icon-box">⌂</span><div><h3>学校账号</h3></div><span id="school-status" class="mini-status">待配置</span></div>
+            <label for="sdut-user">学号</label><input id="sdut-user" name="sdut_user" autocomplete="username" placeholder="输入学号">
+            <label for="sdut-pwd">登录密码</label><input id="sdut-pwd" name="sdut_pwd" type="password" autocomplete="new-password" placeholder="输入密码">
+            <p id="school-secret-note" hidden></p>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><span class="icon-box blue">↗</span><div><h3>群通知</h3></div><label class="switch"><input id="push-enabled" type="checkbox" aria-label="启用 QQ 推送"><span></span></label></div>
+            <label for="notification-provider">发送通道</label>
+            <select id="notification-provider">
+              <option value="onebot">OneBot · 原生 @全体成员</option>
+              <option value="qq_official">QQ 官方</option>
+            </select>
+            <div id="onebot-fields">
+              <label for="onebot-url">OneBot HTTP 地址</label><input id="onebot-url" placeholder="http://host.docker.internal:3000">
+              <div class="split">
+                <div><label for="onebot-token">Access Token</label><input id="onebot-token" type="password" autocomplete="new-password" placeholder="访问令牌（可选）"></div>
+                <div><label for="onebot-group">目标 QQ 群号</label><input id="onebot-group" inputmode="numeric" placeholder="群号"></div>
+              </div>
+              <button id="onebot-check" type="button" class="secondary channel-check">检查连接和 @全体权限</button>
+            </div>
+            <div id="official-fields" hidden>
+              <div class="split">
+                <div><label for="qq-appid">AppID</label><input id="qq-appid" name="qq_appid" placeholder="AppID"></div>
+                <div><label for="qq-secret">AppSecret</label><input id="qq-secret" name="qq_secret" type="password" autocomplete="new-password" placeholder="密钥"></div>
+              </div>
+              <label for="qq-group">目标群 group_openid</label>
+              <div class="input-action"><input id="qq-group" name="qq_group_openid" placeholder="填写群标识"><button id="capture" type="button" class="secondary">获取群标识</button></div>
+              <p id="qq-note" hidden></p>
+            </div>
+          </article>
+        </div>
+        <article class="panel schedule">
+          <div class="schedule-intro"><span class="icon-box">◷</span><div><h3>刷新计划</h3></div></div>
+          <div class="schedule-body">
+            <div>
+              <label for="poll-minutes">采集间隔</label>
+              <div class="interval-input"><input id="poll-minutes" name="poll_minutes" type="number" min="1" max="10080" step="any" required value="15"><span>分钟</span></div>
+              <div class="presets" aria-label="常用刷新间隔"><button type="button" data-minutes="1">1 分钟</button><button type="button" data-minutes="5">5 分钟</button><button type="button" data-minutes="15" class="active">15 分钟</button><button type="button" data-minutes="30">30 分钟</button><button type="button" data-minutes="60">1 小时</button></div>
+            </div>
+            <div class="lookback">
+              <label for="lookback-days">回溯范围</label>
+              <div class="interval-input"><input id="lookback-days" type="number" min="1" max="3650" step="1" value="45" required><span>天</span></div>
+            </div>
+          </div>
+        </article>
+        <article class="panel fee-panel" id="internet-fee">
+          <div class="panel-title"><span class="icon-box amber">¥</span><div><h3>每月网费提醒</h3></div><label class="switch"><input id="fee-enabled" type="checkbox" aria-label="启用每月网费提醒"><span></span></label></div>
+          <div class="fee-settings">
+            <div><label for="fee-day">每月发送日期</label><select id="fee-day"></select></div>
+            <div><label for="fee-time">发送时间</label><input id="fee-time" type="time" value="09:00" required></div>
+            <div><label for="fee-people">缴费人数</label><div class="interval-input"><input id="fee-people" type="number" min="1" max="10000" step="1" value="4" required><span>人</span></div></div>
+            <div><label for="fee-amount">每人缴费金额</label><div class="interval-input"><input id="fee-amount" type="number" min="0.01" max="999999.99" step="0.01" value="20.00" required><span>元</span></div></div>
+          </div>
+          <div class="fee-summary">
+            <div><span class="muted">本月应缴总额</span><strong><span id="fee-total">80.00</span><small> 元</small></strong></div>
+            <div class="fee-state"><span id="fee-state">提醒已关闭</span><p id="fee-next"></p></div>
+          </div>
+          <details class="fee-preview-details" open><summary>通知预览</summary><pre id="fee-preview" aria-live="polite"></pre></details>
+          <p id="fee-error" class="error-text" role="alert" hidden></p>
+          <button id="fee-retry" type="button" class="secondary" hidden>重试本月通知</button>
+        </article>
+        <div class="action-bar">
+          <p id="save-state"><span class="online-dot"></span>配置就绪</p>
+          <div class="actions"><button id="save" type="submit" class="secondary">保存配置</button><button id="preview" type="button" class="secondary">↻ 手动采集</button><button id="toggle" type="button" class="primary">▶ 启动监测</button></div>
+        </div>
+      </form>
+    </section>
+    <section class="section" id="records">
+      <div class="section-heading"><div><h2>最近查寝记录 <span id="rows-label" class="count-chip">0</span></h2><p id="records-copy" hidden></p></div><span class="tiny-label">02 / RECORDS</span></div>
+      <div class="panel table-panel">
+        <div class="table-scroll"><table><thead><tr><th>检查日期</th><th>宿舍</th><th>检查类型</th><th>分数</th><th>等级</th><th>备注</th></tr></thead><tbody id="record-body"></tbody></table></div>
+        <div id="empty-records" class="empty"><span>▤</span><h3>暂无采集记录</h3></div>
+      </div>
+    </section>
+    <section class="section" id="electricity">
+      <div class="section-heading"><div><h2>宿舍电量</h2></div><span class="tiny-label">03 / ELECTRICITY</span></div>
+      <form id="electricity-form" class="panel">
+        <div class="panel-title"><span class="icon-box">ϟ</span><div><h3>宿舍电量</h3></div><span class="mini-status ready">实时监测</span></div>
+        <div class="fee-settings">
+          <div><label for="elc-campus">校区</label><select id="elc-campus"><option>西校区</option><option>东校区</option></select></div>
+          <div><label for="elc-building">楼栋</label><input id="elc-building" value="26号北楼" required maxlength="100"></div>
+          <div><label for="elc-floor">楼层</label><input id="elc-floor" value="8" required maxlength="30"></div>
+          <div><label for="elc-room">房间</label><input id="elc-room" value="814" required maxlength="100"></div>
+        </div>
+        <div class="fee-settings">
+          <div><label for="elc-type">用电类型</label><select id="elc-type"><option>照明插座</option><option>空调用电</option></select></div>
+          <div><label for="elc-minutes">自动查询间隔 · 分钟</label><input id="elc-minutes" type="number" min="5" max="10080" step="any" value="60" required></div>
+          <div><label for="elc-enabled">自动查询</label><label class="switch" style="margin:12px 0"><input id="elc-enabled" type="checkbox" aria-label="自动查询电量"><span></span></label></div>
+        </div>
+        <div class="fee-summary">
+          <div><span class="muted">剩余电量</span><strong><span id="elc-balance">—</span><small> 度</small></strong></div>
+          <p id="elc-detail" class="muted">尚未查询</p>
+        </div>
+        <p id="elc-next" class="stat-sub"></p>
+        <p id="elc-error" class="error-text" role="alert" hidden></p>
+        <div class="actions"><button type="button" id="elc-save" class="secondary">保存电量计划</button><button id="elc-query" type="submit" class="primary">保存并查询电量</button></div>
+      </form>
+    </section>
+    <section class="section" id="activity">
+      <div class="section-heading"><div><h2>运行动态</h2></div><span class="tiny-label">04 / ACTIVITY</span></div>
+      <div class="panel log-panel" id="events"><p class="muted">等待配置</p></div>
+    </section>
+    <footer><span>SDUT MONITOR</span><span class="muted">Asia/Shanghai</span></footer>
+  </main>
+</div><div id="toast" role="status" hidden></div>
+</body></html>

@@ -1,0 +1,24 @@
+{
+  "status": "passed",
+  "query": {
+    "campus": "西校区",
+    "building": "26号北楼",
+    "floor": "8",
+    "room": "北楼26-814照明",
+    "electricity_type": "照明插座",
+    "remaining_kwh": "74.62",
+    "balance_cny": null,
+    "usage_kwh": {},
+    "page_location": "西校区照明插座-北楼26-814照明",
+    "source_notes": [
+      "每小时更新，未尽事宜请到营业室咨询。"
+    ],
+    "checked_at": "2026-10-17T19:59:34+08:00",
+    "selection_ids": {
+      "building": "476",
+      "floor": "8",
+      "room": "25961"
+    }
+  },
+  "recharge_or_payment": false
+}
