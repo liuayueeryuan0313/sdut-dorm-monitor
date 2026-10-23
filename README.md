@@ -112,3 +112,7 @@ python -m unittest -v test_webui test_handover test_reminders test_electricity t
 `test_handover` 会核验接手目录的 34 条原始数据；源码交接包不含私人数据，该项自动跳过，其余测试正常运行。本次开发使用模拟 OneBot，没有进行真实 QQ 群推送或登录实际 QQ 账号；配置你自己的免费 OneBot 服务并通过权限检查后才能实际发送。此前学校实时采集通过的结果见 `verification-live.json`。
 
 原命令行操作说明归档在 [README-CLI.md](README-CLI.md)，原始交接说明见 [HANDOVER.md](HANDOVER.md)。
+
+## 许可证
+
+本项目采用 [GNU General Public License v3.0](LICENSE)（SPDX：`GPL-3.0-only`）许可证。
