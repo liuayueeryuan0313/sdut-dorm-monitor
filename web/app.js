@@ -303,6 +303,7 @@ async function refresh() {
   refreshing = true;
   try {
     snapshot = await api('/api/status');
+    await refreshWidgetAccess();
     const c = snapshot.config;
     if (!hydrated) {
       fillConfig(c);
@@ -596,7 +597,7 @@ $('bot-test-send').addEventListener('click', async () => {
 });
 
 $('fee-retry').addEventListener('click', () => dirty ? toast('请先保存配置', true) : action('/api/fee-retry', '已按你的确认安排重试，请留意群消息'));
-$('logout').addEventListener('click', async () => { await action('/api/logout', '已退出'); location.reload(); });
+$('logout').addEventListener('click', async () => { $('widget-token').value = ''; await action('/api/logout', '已退出'); location.reload(); });
 
 // Log filters
 document.querySelectorAll('.log-filter-btn').forEach(btn => {
@@ -707,3 +708,28 @@ $('elc-save').addEventListener('click', () => saveElectricity(false));
 
 setInterval(refresh, 4000);
 setInterval(countdown, 1000);
+
+async function refreshWidgetAccess() {
+  $('widget-url').value = location.origin + '/api/widget/v1/dorm';
+  try {
+    const state = await api('/api/widget/token');
+    $('widget-status').textContent = state.configured ? '已配置 · 创建于 ' + state.createdAt : '尚未配置 / 已撤销';
+    if (!state.configured) { $('widget-token').value = ''; $('widget-token').type = 'password'; }
+    $('widget-revoke').disabled = !state.configured;
+  } catch (error) { $('widget-status').textContent = '状态读取失败：' + error.message; }
+}
+async function manageWidgetToken(action) {
+  if (dirty) { toast('请先保存学校账号及配置', true); return; }
+  $('widget-rotate').disabled = true; $('widget-revoke').disabled = true;
+  $('widget-error').hidden = true;
+  try {
+    const result = await api('/api/widget/token', {action});
+    $('widget-token').value = result.token || ''; $('widget-token').type = 'password';
+    await refreshWidgetAccess();
+    toast(action === 'rotate' ? '新 Token 已生成，请保存到组件；旧 Token 已失效' : 'Token 已撤销');
+  } catch (error) { $('widget-error').textContent = error.message; $('widget-error').hidden = false; }
+  finally { $('widget-rotate').disabled = false; }
+}
+$('widget-rotate').addEventListener('click', () => manageWidgetToken('rotate'));
+$('widget-revoke').addEventListener('click', () => manageWidgetToken('revoke'));
+$('widget-reveal').addEventListener('click', () => { $('widget-token').type = $('widget-token').type === 'password' ? 'text' : 'password'; });

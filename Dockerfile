@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai
 WORKDIR /app
 
-COPY aes_tool.py sdut_login.py sdut_ssws.py export_ssws.py sync_qqbot.py get_group_openid.py sdut_electricity.py webui.py notifications.py reminders.py ./
+COPY widget_api.py widget_token.py aes_tool.py sdut_login.py sdut_ssws.py export_ssws.py sync_qqbot.py get_group_openid.py sdut_electricity.py webui.py notifications.py reminders.py ./
 COPY web/ ./web/
 RUN mkdir -p /app/data
 

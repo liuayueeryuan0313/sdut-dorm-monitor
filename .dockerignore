@@ -12,3 +12,5 @@
 !sdut_electricity.py
 !web/
 !web/**
+!widget_api.py
+!widget_token.py

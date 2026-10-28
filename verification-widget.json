@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-28",
+  "tests_run": 114,
+  "passed": 113,
+  "skipped": 1,
+  "skipped_reason": "private original history omitted",
+  "javascript_syntax": "passed",
+  "attachment_checksums": "passed",
+  "browser_visual": "not_run_local_browser_disabled",
+  "production_deployment": "not_run",
+  "real_token_generated": false,
+  "school_or_qq_requests": false
+}

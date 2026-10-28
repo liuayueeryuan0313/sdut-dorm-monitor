@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css?v=20261018a"><script src="/app.js?v=20261018a" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>查寝 · 监测控制台</title><link rel="stylesheet" href="/style.css?v=20261028widget"><script src="/app.js?v=20261028widget" defer></script></head>
 <body>
 <div id="auth" class="auth-wrap">
   <div class="auth-card"><div class="brand-mark">寝</div><h1 id="auth-title">管理控制台</h1><p id="auth-copy" class="muted">正在连接服务…</p>
@@ -190,6 +190,15 @@
           <div class="actions"><button id="save" type="submit" class="secondary">保存配置</button><button id="preview" type="button" class="secondary">↻ 手动采集</button><button id="toggle" type="button" class="primary">▶ 启动监测</button></div>
         </div>
       </form>
+      <article class="panel" style="margin-top:20px" id="widget-access">
+        <div class="panel-title"><span class="icon-box">↗</span><div><h3>小组件接口</h3><p>只读查寝和电量摘要，Token 与成功电量持久保存</p></div></div>
+        <p id="widget-status" class="muted" aria-live="polite">正在读取状态…</p>
+        <label for="widget-url">接口地址</label><input id="widget-url" readonly>
+        <label for="widget-token">专用 Token（仅生成时显示，请立即保存到组件）</label><input id="widget-token" type="password" readonly autocomplete="off" placeholder="生成后在此显示；刷新页面后无法找回">
+        <div class="actions" style="margin-top:14px;flex-wrap:wrap"><button id="widget-rotate" class="primary" type="button">生成 / 轮换 Token</button><button id="widget-reveal" class="secondary" type="button">显示 / 隐藏</button><button id="widget-revoke" class="secondary" type="button">撤销 Token</button></div>
+        <p class="field-note">组件填写接口地址与专用 Token，请使用手机可访问的 HTTPS 地址，不能使用手机自身的 localhost。轮换后旧 Token 立即失效，需要同步更新所有组件。读取接口不触发采集或群通知。</p>
+        <p id="widget-error" class="error-text" role="alert" hidden></p>
+      </article>
     </section>
 
     <!-- ================= VIEW 3: 查寝记录 ================= -->

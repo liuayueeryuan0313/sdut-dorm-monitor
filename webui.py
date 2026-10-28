@@ -19,6 +19,7 @@ import time
 from urllib.parse import urlparse
 import re
 
+from widget_api import WidgetTokenFile, snapshot as widget_snapshot, restore_electricity, save_electricity, clear_electricity
 from sdut_login import LoginBlocked
 from sdut_ssws import SswsClient
 from sync_qqbot import format_batch
@@ -123,6 +124,7 @@ class Monitor:
         if self.config["sdut_user"] and cached.get("account_key") == self.account_key():
             self.rows = cached.get("rows", [])
             self.last_success = cached.get("checked_at")
+        restore_electricity(self)
         self.logger = logging.getLogger("ssws.webui." + str(id(self)))
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
@@ -236,8 +238,8 @@ class Monitor:
             elc_schedule_changed = any(updated[k] != self.config[k] for k in ELC_CONFIG)
             elc_changed = any(updated[k] != self.config[k] for k in ELC_FIELDS)
             thresholds_changed = updated.get("elc_warn_thresholds") != self.config.get("elc_warn_thresholds")
-            if elc_changed and self.elc_busy:
-                raise ValueError("电量查询中，请稍后修改宿舍")
+            if elc_changed and (self.busy or self.elc_busy):
+                raise ValueError("采集执行中，请稍后修改宿舍")
             credentials_changed = any(updated[k] != self.config[k] for k in
                                       ("sdut_user", "sdut_pwd", "qq_appid", "qq_secret", "qq_group_openid",
                                        "onebot_url", "onebot_token", "onebot_group_id", "notification_provider"))
@@ -257,6 +259,7 @@ class Monitor:
                 # Keep the login cooldown even when credentials are edited.
             if school_changed or elc_changed:
                 self.elc_result = None
+                clear_electricity(self)
                 self.elc_error = ""
                 self.elc_alerted_thresholds.clear()
                 self.elc_last_kwh = None
@@ -537,6 +540,7 @@ class Monitor:
                     elc_result = self.elc_client.query(*(config[key] for key in ELC_FIELDS)).to_dict()
                     with self.lock:
                         self.elc_result = elc_result
+                        save_electricity(self, elc_result)
                         self.elc_error = ""
                     kwh = elc_result.get("remaining_kwh")
                     cny = elc_result.get("balance_cny")
@@ -759,6 +763,7 @@ class Monitor:
                 result = self.elc_client.query(*(config[key] for key in ELC_FIELDS)).to_dict()
                 with self.lock:
                     self.elc_result = result
+                    save_electricity(self, result)
                     self.elc_error = ""
                 reused_note = " (复用 SSO 会话)" if "opener" in kwargs else ""
                 self.log_event("electricity", "success", "宿舍电量查询成功%s：%s，剩余 %s 度" %
@@ -840,6 +845,7 @@ class Monitor:
 class WebApp:
     def __init__(self, monitor):
         self.monitor = monitor
+        self.widget_tokens = WidgetTokenFile(monitor.data_dir / "webui_widget_token.json")
         self.lock = threading.RLock()
         self.admin_path = monitor.data_dir / "webui_admin.json"
         self.admin = read_json(self.admin_path, None)
@@ -927,6 +933,22 @@ def handler_for(app):
                 self.send(200, (HERE / "web" / name).read_bytes(), mime)
             elif path == "/healthz":
                 self.send(200, {"status": "ok", "worker_alive": bool(app.monitor.thread and app.monitor.thread.is_alive())})
+            elif path == "/api/widget/v1/dorm":
+                # Authorize and project against the same account/config snapshot.
+                with app.monitor.lock:
+                    authorized = app.widget_tokens.authenticate(self.headers.get("Authorization", ""), app.monitor.account_key())
+                    result = widget_snapshot(app.monitor) if authorized and not urlparse(self.path).query else None
+                if not authorized:
+                    self.send(401, {"error": "小组件凭证无效或已撤销"})
+                elif urlparse(self.path).query:
+                    self.send(400, {"error": "此接口不接受查询参数"})
+                else:
+                    self.send(200, result)
+            elif path == "/api/widget/token":
+                if not app.session(self.headers.get("Cookie")):
+                    self.send(401, {"error": "请先登录"})
+                else:
+                    self.send(200, app.widget_tokens.status(app.monitor.account_key()))
             elif path == "/api/session":
                 session = app.session(self.headers.get("Cookie"))
                 self.send(200, dict(setup_required=app.admin is None, authenticated=bool(session),
@@ -970,7 +992,16 @@ def handler_for(app):
                 if not hmac.compare_digest(self.headers.get("X-CSRF-Token", ""), session["csrf"]):
                     self.send(403, {"error": "请求校验失败，请刷新页面"})
                     return
-                if path == "/api/config":
+                if path == "/api/widget/token":
+                    with app.monitor.lock:
+                        if payload.get("action") == "rotate":
+                            if not app.monitor.config.get("sdut_user"):
+                                raise ValueError("请先保存学校账号，再生成小组件 Token")
+                            return self.send(200, app.widget_tokens.rotate(app.monitor.account_key()))
+                        if payload.get("action") == "revoke":
+                            return self.send(200, app.widget_tokens.revoke())
+                    return self.send(400, {"error": "action 只支持 rotate 或 revoke"})
+                elif path == "/api/config":
                     app.monitor.save_config(payload)
                 elif path == "/api/start":
                     app.monitor.set_enabled(True)
